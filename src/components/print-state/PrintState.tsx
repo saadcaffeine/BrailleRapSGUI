@@ -12,7 +12,7 @@ interface IPrintState {
 const PrintState = (props:IPrintState)=>{
   return (
     <div className={`${props.className?props.className:''}`}>
-      <Typography>{`state: ${props.state.state}`}</Typography>
+      <Typography>{`state: ${props.state.state}${props.state.state === 'uploading' || props.state.state === 'printing' ? ` ${Math.round(props.state.progress)}%` : ''}`}</Typography>
       <LinearProgress variant="determinate" value={props.state.progress} />
     </div>
   )

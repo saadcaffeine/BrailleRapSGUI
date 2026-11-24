@@ -1,0 +1,7 @@
+{
+  "name": "esp3d-mock",
+  "private": true,
+  "type": "module",
+  "description": "Mock ESP3DLib + MarlinBraille2 server for testing the SD-card print flow",
+  "dependencies": { "busboy": "^1.6.0", "ws": "^8.18.0" }
+}

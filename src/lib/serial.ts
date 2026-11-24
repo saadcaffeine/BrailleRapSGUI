@@ -30,7 +30,7 @@ const connectSerial = async (baud:number, filterSerial: boolean)=>{
 }
 
 export interface ISerialState {
-  state: 'idle' | 'connecting' | 'connected' | 'printing' | 'done',
+  state: 'idle' | 'connecting' | 'connected' | 'uploading' | 'printing' | 'done' | 'cancelled',
   progress: number
 }
 

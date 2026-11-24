@@ -1,26 +1,30 @@
 //@ts-ignore: : needs React
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { Typography } from '@mui/material'
-import BrailleIcon from '../../assets/images/braille_icon.png'
 
 interface IUiHeader {
   className?:string
 }
 
+// Six-dot cell icon drawn inline (keeps the on-board build small)
+const BrailleIcon = ()=>(
+  <svg className='br-ui-header__logo' viewBox='0 0 30 44' width='30' height='44' aria-hidden='true'>
+    {[[8,8],[8,22],[22,8],[22,36]].map(([cx,cy])=>(
+      <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r='5' fill='currentColor'/>
+    ))}
+    {[[8,36],[22,22]].map(([cx,cy])=>(
+      <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r='4.2' fill='none' stroke='currentColor' strokeWidth='1.2'/>
+    ))}
+  </svg>
+)
+
 const UiHeader = (props:IUiHeader)=>{
   return(
     <div className={props.className}>
-      <img
-        className='br-ui-header__logo'
-        src={`${BrailleIcon}?w=50&h=50&fit=crop&auto=format`}
-        srcSet={`${BrailleIcon}?w=50&h=50&fit=crop&auto=format&dpr=2 2x`}
-        alt='braille icon'
-        loading="lazy"
-      />
+      <BrailleIcon/>
       <Typography variant='h3'>
-      BRAILLE RAP BHUTAN<br/>
-      འབུར་ཡིག་་བཏོན་ནི འབྲུག་ཡུལ་
+        BRAILLERAP SG
       </Typography>
     </div>
   )

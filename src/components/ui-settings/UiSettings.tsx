@@ -1,6 +1,6 @@
 //@ts-ignore: : needs React
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import React, { ChangeEvent, ReactNode, useState } from 'react'
+import React, { ChangeEvent, useEffect, useState } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -13,17 +13,18 @@ import {
   MenuItem,
   Select,
   FormControlLabel,
-  FormLabel,
-  Radio,
-  RadioGroup,
   Switch,
   SelectChangeEvent,
+  TextField,
 } from '@mui/material'
 import { brailleTableOptions } from '../../assets/language-tables/brailleTable'
+import { BrailleSize, PaperPreset, brailleSizes, paperPresets } from '../../lib/script'
 
 export const BaudRateArray = [
   2400, 9600, 19200, 38400, 57600, 115200, 250000, 500000, 1000000,
 ]
+
+export type Connection = 'wifi' | 'usb'
 
 export interface IBrailleSettings {
   tableName: string
@@ -32,6 +33,10 @@ export interface IBrailleSettings {
   velocity: number
   restrictSerialPort: boolean
   baudRate: number
+  connection: Connection
+  host: string
+  paper: PaperPreset
+  brailleSize: BrailleSize
 }
 
 interface IUiSettings {
@@ -42,125 +47,113 @@ interface IUiSettings {
 
 const UiSettings = (props: IUiSettings) => {
   const [state, setState] = useState(props.settings)
+  useEffect(() => {
+    if (props.show) setState(props.settings)
+  }, [props.show])
+
   const handleClose = () => {
     props.handleClose(state)
   }
 
-  const handleBaudRateChanged = (
-    event: SelectChangeEvent<number>,
-    child: ReactNode
-  ) => {
+  const selectChanged = (event: SelectChangeEvent<string | number>) => {
     setState({
       ...state,
-      baudRate: event.target.value as number,
+      [event.target.name]: event.target.value,
     })
   }
 
-  const handleBrailleTableChanged = (
-    event: SelectChangeEvent<''>,
-    child: ReactNode
-  ) => {
-    setState({
-      ...state,
-      tableName: event.target.value,
-    })
-  }
-
-  const switchChanged = (
-    event: ChangeEvent<HTMLInputElement>,
-    checked: boolean
-  ) => {
+  const switchChanged = (event: ChangeEvent<HTMLInputElement>, checked: boolean) => {
     setState({
       ...state,
       [event.target.name]: checked,
     })
   }
 
+  const select = (
+    name: keyof IBrailleSettings,
+    label: string,
+    options: (string | number)[]
+  ) => (
+    <FormControl fullWidth className="br-ui-settings__drop-down">
+      <InputLabel id={`${name}-select-label`}>{label}</InputLabel>
+      <Select
+        labelId={`${name}-select-label`}
+        id={`${name}-select`}
+        name={name}
+        value={state[name] as string | number}
+        label={label}
+        onChange={selectChanged}
+      >
+        {options.map((element) => (
+          <MenuItem key={element} value={element}>
+            {element}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  )
+
   return (
     <Dialog open={props.show}>
-      <DialogTitle>Subscribe</DialogTitle>
+      <DialogTitle>Settings</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ marginBottom: '16px' }}>
-          Set print and braille settings.
+          Braille, paper and embosser connection.
         </DialogContentText>
+        {select('tableName', 'Braille table', brailleTableOptions)}
+        {select('paper', 'Paper', Object.keys(paperPresets))}
+        {select('brailleSize', 'Braille size', Object.keys(brailleSizes))}
         <FormControl fullWidth className="br-ui-settings__drop-down">
-          <InputLabel id="braille-table-select-label">Braille Table</InputLabel>
+          <InputLabel id="connection-select-label">Embosser connection</InputLabel>
           <Select
-            labelId="braille-table-select-label"
-            id="braille-table-select"
-            // @ts-ignore
-            defaultValue={state.tableName}
-            // @ts-ignore
-            value={state.tableName}
-            label="Braille Table"
-            onChange={handleBrailleTableChanged}
+            labelId="connection-select-label"
+            id="connection-select"
+            name="connection"
+            value={state.connection}
+            label="Embosser connection"
+            onChange={selectChanged}
           >
-            {brailleTableOptions.map((element) => {
-              return (
-                <MenuItem key={element} value={element}>
-                  {element}
-                </MenuItem>
-              )
-            })}
+            <MenuItem value="wifi">WiFi (SD card on the embosser)</MenuItem>
+            <MenuItem value="usb">USB cable (desktop Chrome / Edge)</MenuItem>
           </Select>
         </FormControl>
-        <FormControl fullWidth className="br-ui-settings__drop-down">
-          <InputLabel id="baud-rate-select-label">Baud Rate</InputLabel>
-          <Select
-            labelId="baud-rate-select-label"
-            id="baud-rate-select"
-            // @ts-ignore
-            defaultValue={state.baudRate}
-            // @ts-ignore
-            value={state.baudRate}
-            label="Baud Rate"
-            onChange={handleBaudRateChanged}
-          >
-            {BaudRateArray.map((element) => {
-              return (
-                <MenuItem key={element} value={element}>
-                  {element}
-                </MenuItem>
-              )
-            })}
-          </Select>
-        </FormControl>
+        {state.connection === 'wifi' && (
+          <TextField
+            fullWidth
+            className="br-ui-settings__drop-down"
+            label="Embosser address"
+            helperText="Leave as is when this page was opened from the embosser"
+            value={state.host}
+            onChange={(e) => setState({ ...state, host: e.target.value.trim() })}
+          />
+        )}
+        {state.connection === 'usb' && select('baudRate', 'Baud rate', BaudRateArray)}
         <FormControl>
           <FormControlLabel
-            control={
-              <Switch
-                checked={state.homeY}
-                onChange={switchChanged}
-                name="homeY"
-              />
-            }
+            control={<Switch checked={state.homeY} onChange={switchChanged} name="homeY" />}
             label="load paper in the beginning"
           />
         </FormControl>
         <FormControl>
           <FormControlLabel
-            control={
-              <Switch
-                checked={state.ejectPaper}
-                onChange={switchChanged}
-                name="ejectPaper"
-              />
-            }
+            control={<Switch checked={state.ejectPaper} onChange={switchChanged} name="ejectPaper" />}
             label="eject paper when finished"
           />
         </FormControl>
-        <FormControl>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={state.restrictSerialPort}
-                onChange={switchChanged}
-                name="restrictSerialPort"
-              />
-            }
-            label="restrict serial port"
-          />
-        </FormControl>
+        {state.connection === 'usb' && (
+          <FormControl>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={state.restrictSerialPort}
+                  onChange={switchChanged}
+                  name="restrictSerialPort"
+                />
+              }
+              label="only list CH340 serial ports"
+            />
+          </FormControl>
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>Save and exit</Button>

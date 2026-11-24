@@ -1,13 +1,15 @@
 //@ts-ignore: : needs React
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import React from 'react'
-import { Button, Select } from '@mui/material'
+import { Button } from '@mui/material'
 
 
 
 export interface IControlsProps {
   className?:string
   canPrint: boolean
+  canCancel?: boolean
+  onCancelClicked?: ()=>void
   onSendClicked: ()=>void
   onGenerateClicked: ()=>void
   onSettingsClicked: ()=>void
@@ -40,6 +42,11 @@ const Controls = (props:IControlsProps)=>{
       <Button disabled={!props.canPrint} variant='contained' onClick={handleSend}>
         PRINT
       </Button>
+      {props.canCancel && (
+        <Button variant='outlined' color='error' onClick={()=>props.onCancelClicked && props.onCancelClicked()}>
+          CANCEL
+        </Button>
+      )}
       <Button variant='contained' onClick={handleSettings}>
         SETTINGS
       </Button>

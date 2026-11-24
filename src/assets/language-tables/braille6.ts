@@ -1,4 +1,7 @@
 // 6 dots braille parameters
+// NOTE: despite the original 'english' label this is the French Braille table
+// from the original BrailleRap code (Antoine digits, number sign dot 6,
+// capital sign dots 4-6, French accented letters). For English use the UEB table.
 
 import { IBrailleTable } from './brailleTable'
 
@@ -13,7 +16,7 @@ import { IBrailleTable } from './brailleTable'
 // 3     3 6
 
 export const braille6:IBrailleTable = {
-  name: 'english',
+  name: 'French (original BrailleRap)',
   type: '6dots',
   dotMap: {
     0: {
