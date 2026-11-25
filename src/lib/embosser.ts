@@ -365,7 +365,7 @@ export class Embosser {
         const stageNow = this.stageAt > startedAt ? s.stage : undefined
         if (this.stoppedAt > startedAt) {
           finish(() => {
-            onState({ phase: 'stopped', progress: s.dots ? (s.dot / s.dots) * 100 : 0, dot: s.dot, dots: s.dots, failedAt: stageNow, message: 'Stopped. The embosser is restarting.' })
+            onState({ phase: 'stopped', progress: s.dots ? (s.dot / s.dots) * 100 : 0, dot: s.dot, dots: s.dots, failedAt: stageNow, message: 'restarting the embosser…' })
             resolve()
           })
           return

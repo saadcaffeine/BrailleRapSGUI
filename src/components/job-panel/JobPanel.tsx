@@ -53,6 +53,18 @@ const segmentStates = (job: IJobState): { state: SegState; fill: number }[] => {
   })
 }
 
+// Small looped animation of a solenoid plunger striking paper (decorative)
+const SolenoidIcon = () => (
+  <svg className="br-job__solenoid" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+    <rect x="5" y="1" width="10" height="7" rx="1.5" fill="#2f3e52" />
+    <g className="br-job__plunger">
+      <rect x="9" y="7" width="2" height="7" fill="#2f3e52" />
+      <circle cx="10" cy="14.5" r="1.6" fill="#f2a516" />
+    </g>
+    <rect x="2" y="17" width="16" height="1.6" rx="0.8" fill="#9aa3ad" />
+  </svg>
+)
+
 interface IJobPanel {
   job: IJobState
   className?: string
@@ -65,6 +77,7 @@ const JobPanel = ({ job, className }: IJobPanel) => {
   return (
     <div className={`br-job ${className || ''}`} aria-live="polite">
       <Typography className="br-job__text">
+        {(job.phase === 'printing') && <SolenoidIcon />}
         {phaseText[job.phase]}{pct}
         {showDots ? ` ${job.dot}/${job.dots} dots` : ''}
         {job.message ? ` — ${job.message}` : ''}

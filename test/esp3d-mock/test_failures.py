@@ -56,18 +56,19 @@ with sync_playwright() as p:
     btn(page, 'GENERATE').click()   # changing settings clears the generated G-code
 
     # staged progress, disabled buttons, per-dot flashing
-    page.evaluate("""() => { window.__flashes = 0; const el = document.querySelector('.br-ui-input__braille-canvas');
-        new MutationObserver(() => { if (el.classList.contains('br-flash')) window.__flashes++ }).observe(el, {attributes: true, attributeFilter: ['class']}) }""")
     btn(page, 'PRINT').click()
     check(wait_until(lambda: seg(page, 'homing') == 'active', 8), 'homing segment active first')
     check(btn(page, 'PRINT').is_disabled() and btn(page, 'GENERATE').is_disabled(), 'PRINT and GENERATE disabled while printing')
     check(wait_until(lambda: seg(page, 'paper') == 'active' and seg(page, 'homing') == 'done', 8), 'then paper segment active, homing done')
     check(wait_until(lambda: seg(page, 'printing') == 'active' and seg(page, 'paper') == 'done', 10), 'then embossing segment active')
     body_has(page, 'dots', 5000)
+    canvas = page.locator('.br-ui-input__braille-canvas')
+    check('br-embossing' in canvas.get_attribute('class') and page.locator('.br-job__solenoid').count() == 1,
+          'looped embossing animation (preview glow + solenoid icon) while embossing')
     body_has(page, 'Done', 30000)
+    check('br-embossing' not in canvas.get_attribute('class') and page.locator('.br-job__solenoid').count() == 0,
+          'animation stops when the job is done')
     check(all(seg(page, k) == 'done' for k in ['homing', 'paper', 'printing']), 'all segments done at the end')
-    flashes = page.evaluate('window.__flashes'); dots = get('/__log') and open('uploaded.gco').read().count('M3 S1')
-    check(flashes >= dots * 0.8, f'preview flashed on dots ({flashes} flashes for {dots} dots)')
     check(not btn(page, 'PRINT').is_disabled(), 'PRINT enabled again after the job')
 
     # paper not loaded -> paper segment red, PAPER dialog -> Retry without re-upload
@@ -105,6 +106,8 @@ with sync_playwright() as p:
     check(get('/__log').count('[ESP444]RESTART') == n_restarts + 1, 'STOP restarts the controller immediately')
     check(seg(page, 'printing') == 'failed', 'embossing segment marked where it stopped')
     check(wait_led(page, 'LINK', 'green', 20), 'LINK green after STOP restart')
+    check(wait_until(lambda: 'embosser ready' in page.locator('.br-job__text').inner_text() and 'restarting' not in page.locator('.br-job__text').inner_text(), 5),
+          '"restarting" text replaced once the link is back')
 
     # restart from settings (two taps)
     page.click('[aria-label=Settings]'); btn(page, 'Restart embosser').click(); btn(page, 'Tap again to restart').click()

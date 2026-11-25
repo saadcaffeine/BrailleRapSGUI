@@ -186,14 +186,15 @@
   }
 }
 
-// flash the braille preview every time a dot is embossed
-.br-ui-input__braille-canvas.br-flash {
-  animation: br-dot-flash 0.18s ease-out;
+// While embossing: a slow looped glow on the preview. Dot events arrive from ESP3D in
+// ~500 ms bursts, so a per-dot flash can't be in real time; a steady loop reads better.
+.br-ui-input__braille-canvas.br-embossing {
+  animation: br-embossing-glow 1.6s ease-in-out infinite;
 }
-@keyframes br-dot-flash {
-  0% { box-shadow: 0 0 0 3px #f2a516, inset 0 0 0 9999px rgba(242, 165, 22, 0.12); }
-  100% { box-shadow: 0 0 0 0 transparent, inset 0 0 0 9999px transparent; }
+@keyframes br-embossing-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(242, 165, 22, 0.35); }
+  50% { box-shadow: 0 0 0 3px rgba(242, 165, 22, 0.75), 0 0 14px rgba(242, 165, 22, 0.35); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .br-ui-input__braille-canvas.br-flash { animation: none; outline: 2px solid #f2a516; }
+  .br-ui-input__braille-canvas.br-embossing { animation: none; box-shadow: 0 0 0 2px #f2a516; }
 }

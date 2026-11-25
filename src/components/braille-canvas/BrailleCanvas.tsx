@@ -20,19 +20,6 @@ const BrailleCanvas = (props: IBrailleCanvasProps) => {
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
   const [pxMmRatio, setPxMmRatio] = useState(5)
-  const [flash, setFlash] = useState(false)
-
-  // flash the panel each time a dot is embossed
-  useEffect(() => {
-    if (!props.embossed) return
-    setFlash(false)
-    const raf = window.requestAnimationFrame(() => setFlash(true))
-    const t = window.setTimeout(() => setFlash(false), 200)
-    return () => {
-      window.cancelAnimationFrame(raf)
-      window.clearTimeout(t)
-    }
-  }, [props.embossed])
 
   const handleWindowResize = () => {
     const width = ref.current?.clientWidth ?? 1
@@ -75,7 +62,7 @@ const BrailleCanvas = (props: IBrailleCanvasProps) => {
   }, [props.paperWidth])
 
   return (
-    <Paper className={`${props.className || ''}${flash ? ' br-flash' : ''}`} variant="outlined" data-embossed={props.embossed ?? ''}>
+    <Paper className={`${props.className || ''}${props.embossed !== undefined ? ' br-embossing' : ''}`} variant="outlined" data-embossed={props.embossed ?? ''}>
       <canvas ref={ref} id="braille-canvas" />
     </Paper>
   )

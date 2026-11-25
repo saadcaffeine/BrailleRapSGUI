@@ -73,3 +73,22 @@ $upload: #2f7de0;
   color: #1b2a3a;
   text-shadow: 0 0 3px #fff, 0 0 3px #fff;
 }
+
+.br-job__text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.br-job__solenoid { flex: 0 0 auto; }
+.br-job__plunger {
+  animation: br-plunger 0.45s ease-in infinite;
+  transform-box: fill-box;
+}
+@keyframes br-plunger {
+  0%, 55% { transform: translateY(-3px); }
+  75% { transform: translateY(1.5px); }
+  100% { transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .br-job__plunger { animation: none; }
+}

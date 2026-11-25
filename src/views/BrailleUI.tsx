@@ -94,6 +94,16 @@ const BrailleUI = () => {
     }
   }, [wifi, brailleSettings.host])
 
+  // after a restart (STOP, Settings or halt recovery) clear the "restarting" text once the link is back
+  useEffect(() => {
+    if (embStatus.link !== 'ok') return
+    setJob((prev) =>
+      prev.message && /restart/i.test(prev.message)
+        ? { ...prev, phase: prev.phase === 'stopped' ? 'stopped' : 'idle', message: 'embosser ready' }
+        : prev
+    )
+  }, [embStatus.link])
+
   // a job is running on the SD card that this page did not start (page reloaded,
   // another phone, contact lost and regained): follow it so it can be watched and cancelled
   useEffect(() => {
@@ -231,7 +241,7 @@ const BrailleUI = () => {
   const handleStopClicked = () => {
     const running = isPrinting
     void embosser.restart()
-    if (!running) setJob({ phase: 'stopped', progress: 0, message: 'The embosser is restarting.' })
+    if (!running) setJob({ phase: 'stopped', progress: 0, message: 'restarting the embosser…' })
   }
   const handleRestartFromSettings = () => {
     setShowSettings(false)

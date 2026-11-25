@@ -17,7 +17,7 @@ Fork of [kyjanond/BrailleRapUI](https://github.com/kyjanond/BrailleRapUI) (Brail
   - PAPER: amber by default, green only when a sheet is detected. If your sensor reads the other way, flip it in Settings.
   - POWER: grey, not measured on this board yet
 - **Staged progress bar:** Homing (purple), then Paper (teal), then Embossing (green, filling dot by dot). The stage where a job failed or stopped turns red. The progress comes from `M118 BR:` markers in the G-code (`HOMING`, `PAPER`, `PRINT`, `DOT n/N`, `EJECT`, `END`). Each marker comes straight after an `M3 S1`, which waits for the move before it to finish, so it arrives as the dot is embossed.
-- **Live preview:** the Braille panel flashes on every dot. Embossed dots turn black, the dot just fired is orange, and the rest are grey.
+- **Live preview:** while embossing, the preview glows in a slow loop and a small solenoid icon taps next to the dot count. Embossed dots turn black, the latest is orange, and the rest are grey. ESP3D sends Marlin's output to the browser in bursts every 500 ms (`FLUSHTIMEOUT` in ESP3DLib), so the dot count and preview update in steps. A flash per dot can't be in time with the solenoid, which is why the page uses a steady animation.
 - **Buttons:** GENERATE and PRINT are disabled while a job runs. **CANCEL** stops cleanly after the current move (`M524`). The **emergency-stop icon** (red on yellow) stops everything at once by restarting the controller (`[ESP444]RESTART`). Marlin's emergency parser isn't connected to the serial input on ESP32, so `M112` would only wait in the queue. Settings (gear icon) also has **Restart embosser**.
 - **Failed prints are handled:**
   - Paper doesn't load: **Retry** re-runs the file already on the SD card.
