@@ -66,7 +66,13 @@ const marlin = (cmd) => {
     reply('ok')
   } else if (g === 'M24') {
     if (selected) { printing = { total: selected.data.length, pos: 1 }; reply('ok'); runFile() } else reply('ok')
-  } else if (g === 'M524') { if (printing) { clearTimeout(printing.timer); printing = null }; reply('ok') }
+  } else if (g === 'M524') {
+    // MarlinBraille2 xl-sg: abort runs EVENT_GCODE_SD_ABORT "G28X\nM84" (short X home, no paper feed)
+    const was = !!printing
+    if (printing) { clearTimeout(printing.timer); printing = null }
+    reply('ok')
+    if (was) block(1, () => flushQueue())
+  }
   else reply('ok')
 }
 

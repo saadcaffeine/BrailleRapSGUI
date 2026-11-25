@@ -2,6 +2,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import React from 'react'
 import { Button } from '@mui/material'
+import EStopButton from '../estop/EStopButton'
 
 export interface IControlsProps {
   className?: string
@@ -31,15 +32,7 @@ const Controls = (props: IControlsProps) => {
         </Button>
       )}
       {props.showStop && (
-        <Button
-          variant='contained'
-          color='error'
-          disabled={!props.canStop}
-          onClick={() => props.onStopClicked && props.onStopClicked()}
-          title='Stops all motion at once by restarting the embosser controller'
-        >
-          STOP
-        </Button>
+        <EStopButton disabled={!props.canStop} onClick={() => props.onStopClicked && props.onStopClicked()} />
       )}
     </div>
   )

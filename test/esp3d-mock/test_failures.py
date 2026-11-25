@@ -40,6 +40,7 @@ with sync_playwright() as p:
 
     # header / footer
     check(page.locator('[aria-label=Settings]').count() == 1 and btn(page, 'SETTINGS').count() == 0, 'settings is a gear icon, no SETTINGS button')
+    check(page.get_by_role('button', name='Emergency stop').count() == 1 and btn(page, 'STOP').count() == 0, 'STOP is an emergency-stop icon')
     foot = page.locator('.br-ui-footer').inner_text()
     check('©' not in page.inner_text('body') and 'MIT License' not in foot, 'copyright line removed')
     check(all(u in foot for u in ['kyjanond', 'braillerap', 'luc-github', 'MarlinFirmware', 'me-no-dev', 'links2004']), 'GitHub credits after the heart')
@@ -99,7 +100,7 @@ with sync_playwright() as p:
     n_restarts = get('/__log').count('[ESP444]RESTART')
     btn(page, 'PRINT').click()
     check(wait_until(lambda: seg(page, 'printing') == 'active', 15), 'embossing before STOP')
-    btn(page, 'STOP').click()
+    page.get_by_role('button', name='Emergency stop').click()
     body_has(page, 'Stopped', 10000)
     check(get('/__log').count('[ESP444]RESTART') == n_restarts + 1, 'STOP restarts the controller immediately')
     check(seg(page, 'printing') == 'failed', 'embossing segment marked where it stopped')
@@ -119,6 +120,10 @@ with sync_playwright() as p:
     check(btn(page, 'CANCEL').count() == 1, 'reloaded page re-attaches to running job with CANCEL')
     btn(page, 'CANCEL').click(); body_has(page, 'Cancelled', 15000)
     check('M524' in get('/__log'), 'cancel after reload sends M524')
+    n_m119 = get('/__log').count('M119')
+    check(wait_led(page, 'LINK', 'green', 10), 'embosser reachable (LINK green) after cancel')
+    check(wait_until(lambda: get('/__log').count('M119') > n_m119 + 1, 10), 'status polling continues after cancel')
+    check(not btn(page, 'GENERATE').is_disabled(), 'page not stuck busy after cancel (GENERATE enabled)')
 
     # no SD card
     scenario('nocard', 1)
