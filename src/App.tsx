@@ -4,8 +4,8 @@ import React from 'react'
 import BrailleUI from './views/BrailleUI'
 import { createTheme, ThemeProvider } from '@mui/material'
 //fonts
-import '@fontsource/jua'
-import '@fontsource/roboto'
+import '@fontsource/roboto/latin-400.css'
+import '@fontsource/roboto/latin-500.css'
 import Footer from './components/footer/Footer'
 
 const theme = createTheme({

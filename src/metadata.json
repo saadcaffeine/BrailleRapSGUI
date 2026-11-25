@@ -2,8 +2,8 @@
   "buildMajor": 0,
   "buildMinor": 0,
   "buildRevision": 13,
-  "buildTag": "",
+  "buildTag": "sg",
   "copyright": "Ondrej Kyjanek",
   "datetime": "2023-11-07T14:36:43.411Z",
-  "sourceUrl": "https://github.com/kyjanond/BrailleRapUI"
+  "sourceUrl": "https://github.com/saadcaffeine/BrailleRapSGUI"
 }

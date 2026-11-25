@@ -7,15 +7,33 @@ import { compairCharAgaistDevnagriNumber, getPrefixforSpecialcharacter } from '.
 import { IBrailleSettings } from '../components/ui-settings/UiSettings'
 
 
+// Paper presets (mm). Printer coordinates: X = across the sheet from the X home,
+// Y = down the sheet from the top edge (MarlinBraille2 homes Y to the top of the paper).
+export const paperPresets = {
+  'A4 (BrailleRAP)': { paperWidth: 175, paperHeight: 290, marginWidth: 3, marginHeight: 5 },
+  'A4 on BrailleRAP XL': { paperWidth: 210, paperHeight: 297, marginWidth: 10, marginHeight: 10 },
+  'A3 (BrailleRAP XL)': { paperWidth: 297, paperHeight: 420, marginWidth: 10, marginHeight: 10 },
+}
+export type PaperPreset = keyof typeof paperPresets
+
+// Braille cell geometry (mm).
+//   standard: 2.5 mm dot pitch, 6.0 mm cell pitch, 10 mm line pitch (common literary Braille spec)
+//   large:    the original BrailleRap Bhutan spacing
+export const brailleSizes = {
+  'standard': { dotPitch: 2.5, cellPitch: 6.0, linePitch: 10.0 },
+  'large (original Bhutan spacing)': { dotPitch: 4.0, cellPitch: 10.0, linePitch: 16.0 },
+}
+export type BrailleSize = keyof typeof brailleSizes
+
 export const brailleConfig = {
-  marginWidth: 3,
-  marginHeight: 5,
-  paperWidth: 175,
-  paperHeight: 290,
-  letterWidth: 4,
+  marginWidth: 10,
+  marginHeight: 10,
+  paperWidth: 297,
+  paperHeight: 420,
+  dotPitch: 2.5,
+  cellPitch: 6.0,
+  linePitch: 10.0,
   dotRadius: 1.25,
-  letterPadding: 6,
-  linePadding: 4,
   headDownPosition: -2.0,
   headUpPosition: 10,
   speed: 2000,
@@ -93,13 +111,14 @@ const gcodePosition = function(X?:number, Y?:number, Z?:number) {
   if(X === undefined && Y === undefined && Z === undefined) {
     throw new Error('Null position when moving')
   }
-  if(X) {
+  // note: 0 is a valid coordinate, so test against undefined (the original `if(X)` dropped zeros)
+  if(X !== undefined) {
     code += ' X' + X.toFixed(2)
   }
-  if(Y) {
+  if(Y !== undefined) {
     code += ' Y' + Y.toFixed(2)
   }
-  if(Z) {
+  if(Z !== undefined && Z !== 0) {
     code += ' Z' + Z.toFixed(2)
   }
   code += ';\r\n'
@@ -291,87 +310,156 @@ export interface ICharIndices {
   indices:number[]
 }
 
-const textToIndices = (
-  _text: string,
-  _brailleTable:IBrailleTable, 
-  _brailleSettings: typeof brailleConfig
-)=>{
-  const latinToBrailleMap = new Map(Object.entries(_brailleTable.latinToBraille))
-  const indiceArray:ICharIndices[] = []
-  const is8dot = _brailleTable.type === '8dots'
+type Cell = number[] | 'NL'
+
+const isDigit = (c:string)=> c >= '0' && c <= '9'
+const isUpper = (c:string)=> c !== c.toLowerCase() && c === c.toUpperCase()
+const isLetter = (c:string)=> c.toLowerCase() !== c.toUpperCase()
+
+// UEB grade 1: capitals, capitalised words, numeric mode, grade 1 indicator after numbers
+const uebToCells = (text:string, table:IBrailleTable, unknown:Set<string>):Cell[]=>{
+  const map = table.latinToBraille
+  const multi = table.multiCell || {}
+  const digits = table.digits || {}
+  const cells:Cell[] = []
+  let numeric = false
+  let capsWord = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (/\r?\n|\r/.test(c)) {
+      if (c === '\r' && text[i + 1] === '\n') i++
+      cells.push('NL'); numeric = false; capsWord = false
+      continue
+    }
+    if (isDigit(c)) {
+      if (!numeric) { cells.push(table.numberPrefix); numeric = true }
+      cells.push(digits[c])
+      continue
+    }
+    if (numeric && (table.numericContinue || []).includes(c) && isDigit(text[i + 1] || '')) {
+      cells.push(map[c])
+      continue
+    }
+    if (isLetter(c)) {
+      const lower = c.toLowerCase()
+      if (!(lower in map)) { unknown.add(c); numeric = false; continue }
+      if (numeric && /[a-j]/.test(lower) && table.letterAfterNumberPrefix) cells.push(table.letterAfterNumberPrefix)
+      numeric = false
+      if (isUpper(c)) {
+        if (!capsWord) {
+          // look ahead: a word of 2+ capitals gets the capitalised-word indicator
+          let j = i
+          while (j < text.length && isLetter(text[j]) && isUpper(text[j])) j++
+          const wordEnds = j >= text.length || !isLetter(text[j])
+          if (j - i >= 2 && wordEnds && table.capitalWordPrefix) {
+            table.capitalWordPrefix.forEach((cell)=> cells.push(cell))
+            capsWord = true
+          } else if (table.capitalPrefix) {
+            cells.push(table.capitalPrefix)
+          }
+        }
+      } else {
+        capsWord = false
+      }
+      cells.push(map[lower])
+      continue
+    }
+    numeric = false
+    capsWord = false
+    if (c in multi) { multi[c].forEach((cell)=> cells.push(cell)); continue }
+    if (c in map) { cells.push(map[c]); continue }
+    unknown.add(c)
+  }
+  return cells
+}
+
+// Original BrailleRap Bhutan behaviour, kept for the existing French / Indian / 8-dot tables
+const legacyToCells = (_text:string, table:IBrailleTable, unknown:Set<string>):Cell[]=>{
+  const latinToBrailleMap = new Map(Object.entries(table.latinToBraille))
+  const is8dot = table.type === '8dots'
+  const cells:Cell[] = []
   let isWritingNumber = false
   let isSpecialchar = false
-  let currentX = _brailleSettings.marginWidth
-  let currentY = _brailleSettings.marginHeight
-  
   for(let i = 0 ; i < _text.length ; i++) {
     const char = _text[i]
-
-    // check special cases:
     const charIsCapitalLetter = is8dot ? false : /[A-Z]/.test(char)
-    const charIsLineBreak = /\r?\n|\r/.test(char)
-
-    // If char is line break: reset currentX and increase currentY
-    if(charIsLineBreak) {
-      currentY += (is8dot ? 2 : 3) * _brailleSettings.letterWidth + _brailleSettings.linePadding
-      currentX = _brailleSettings.marginWidth
-
-      if(currentY > _brailleSettings.paperHeight - _brailleSettings.marginHeight) { 				// if there is not enough space on paper: stop
-        break
-      }
+    if(/\r?\n|\r/.test(char)) {
+      cells.push('NL')
       continue
     }
-    // Check if char exists in map
     if(!latinToBrailleMap.has(char.toLowerCase())) {
-      console.log('Character ' + char + ' was not translated in braille.')
+      unknown.add(char)
       continue
     }
-
     let indices = latinToBrailleMap.get(char)
-
     let devnagriNr = compairCharAgaistDevnagriNumber(char)
     if (typeof devnagriNr === 'string') {
       devnagriNr = parseInt(devnagriNr)
     }
-    // handle special cases:
-    if(!isWritingNumber && !isNaN(devnagriNr)) { 			// if we are not in a number sequence and char is a number: add prefix and enter number sequence
-      indices = _brailleTable.numberPrefix
-      i-- 													// we will reread the same character
+    let reread = false
+    if(!isWritingNumber && !isNaN(devnagriNr)) {
+      indices = table.numberPrefix
+      reread = true
       isWritingNumber = true
     } else if(isWritingNumber && char == ' ') {
       isWritingNumber = false
-    } else if( charIsCapitalLetter ) { 							// if capital letter: add prefix, lowerCase letter and reread the same char
-      indices = [4, 6]
+    } else if( charIsCapitalLetter ) {
+      indices = table.capitalPrefix || [4, 6]
       _text = replaceAt(_text, i, _text[i].toLowerCase())
-      i--
+      reread = true
     }
-    if(!isSpecialchar && getPrefixforSpecialcharacter(char).length>0)
-    {
+    if(!reread && !isSpecialchar && getPrefixforSpecialcharacter(char).length>0) {
       indices = getPrefixforSpecialcharacter(char)
-      i-- 													// we will reread the same character
+      reread = true
       isSpecialchar = true
+    } else if (!reread) {
+      isSpecialchar = false
     }
-    if (indices){
-      indiceArray.push({
-        xAct:currentX,
-        yAct:currentY,
-        indices
-      })
-    }
-
-    currentX += _brailleSettings.letterWidth + _brailleSettings.letterPadding
-
-    // Test if there is enough room on the line to draw the next character
-    if(currentX + _brailleSettings.letterWidth + _brailleSettings.dotRadius > _brailleSettings.paperWidth - _brailleSettings.marginWidth) { // if we can't: go to next line
-      currentY += (is8dot ? 2 : 3) * _brailleSettings.letterWidth + _brailleSettings.linePadding
-      currentX = _brailleSettings.marginWidth
-    }
+    if (indices) cells.push(indices)
+    if (reread) i--
   }
-  return indiceArray
+  return cells
+}
+
+export const textToCells = (text:string, table:IBrailleTable, unknown:Set<string> = new Set())=>
+  table.rules === 'ueb' ? uebToCells(text, table, unknown) : legacyToCells(text, table, unknown)
+
+// Lay cells out on the page; returns positioned cells and whether the text overflowed the sheet
+const layoutCells = (cells:Cell[], table:IBrailleTable, cfg: typeof brailleConfig)=>{
+  const is8dot = table.type === '8dots'
+  const lineAdvance = cfg.linePitch + (is8dot ? cfg.dotPitch : 0)
+  const cellHeight = (is8dot ? 3 : 2) * cfg.dotPitch
+  const placed:ICharIndices[] = []
+  let x = cfg.marginWidth
+  let y = cfg.marginHeight
+  let truncated = false
+  const fitsVertically = ()=> y + cellHeight <= cfg.paperHeight - cfg.marginHeight
+  for (const cell of cells) {
+    if (cell === 'NL') {
+      x = cfg.marginWidth
+      y += lineAdvance
+      continue
+    }
+    if (x + cfg.dotPitch + cfg.dotRadius > cfg.paperWidth - cfg.marginWidth) {
+      x = cfg.marginWidth
+      y += lineAdvance
+    }
+    if (!fitsVertically()) { truncated = true; break }
+    placed.push({ xAct: x, yAct: y, indices: cell })
+    x += cfg.cellPitch
+  }
+  return { placed, truncated }
+}
+
+export interface IGCodeResult {
+  gcode: string
+  dots: number
+  truncated: boolean
+  unknownChars: string[]
 }
 
 // Draw braille and generate gcode
-export function brailleToGCode(textToWrite:string,settings:IBrailleSettings) {
+export function brailleToGCodeResult(textToWrite:string,settings:IBrailleSettings):IGCodeResult|undefined {
   if (!brailleTableMap.has(settings.tableName)){
     console.error(`Table ${settings.tableName} does not exist`)
     return
@@ -380,63 +468,46 @@ export function brailleToGCode(textToWrite:string,settings:IBrailleSettings) {
   brailleConfig.speed = settings.velocity
   brailleConfig.homeY = settings.homeY
   brailleConfig.ejectPaper = settings.ejectPaper
+  Object.assign(brailleConfig, paperPresets[settings.paper] || paperPresets['A3 (BrailleRAP XL)'])
+  Object.assign(brailleConfig, brailleSizes[settings.brailleSize] || brailleSizes['standard'])
 
   GCODEdotposition.length = 0
+  GCODEsvgdotposition.length = 0
 
   const is8dot = brailleTable.type === '8dots'
-  const indicesArray = textToIndices(textToWrite,brailleTable,brailleConfig)
-  for(let i = 0 ; i < indicesArray.length ; i++) {
-    const indices = indicesArray[i]
-    const currentX = indices.xAct
-    const currentY = indices.yAct
+  const unknown = new Set<string>()
+  const cells = textToCells(textToWrite, brailleTable, unknown)
+  const { placed, truncated } = layoutCells(cells, brailleTable, brailleConfig)
 
-    // compute corresponding printer coordinates
-    let gx = brailleConfig.invertX ? -currentX : brailleConfig.paperWidth - currentX
-    let gy = -currentY				// canvas y axis goes downward, printers goes upward
-
-    if(brailleConfig.delta) { 				// delta printers have their origin in the center of the sheet
-      gx -= brailleConfig.paperWidth / 2
-      gy += brailleConfig.paperHeight / 2
-    } else if(!brailleConfig.invertY) {
-      gy += brailleConfig.paperHeight
-    }
-
-    // add gcode
-    gcodeMoveToCached(brailleConfig.mirrorX ? -gx : gx, brailleConfig.mirrorY ? -gy : gy,0)
-
-    // Iterate through all indices
+  for (const cell of placed) {
     for(let y = 0 ; y < (is8dot ? 4 : 3) ; y++) {
       for(let x = 0 ; x < 2 ; x++) {
-        if(indices.indices.indexOf(brailleTable.dotMap[x][y]) != -1) { 			// if index exists in current char: draw the dot
-          const px = currentX + x * brailleConfig.letterWidth
-          const py = currentY + y * brailleConfig.letterWidth
-
-          // Compute corresponding gcode position
-          if(x > 0 || y > 0) {
-
-            gx = brailleConfig.invertX ? - px : brailleConfig.paperWidth - px
-            gy = -py						// canvas y axis goes downward, printers goes upward
-
-            if(brailleConfig.delta) { 			// delta printers have their origin in the center of the sheet
-              gx -= brailleConfig.paperWidth / 2
-              gy += brailleConfig.paperHeight / 2
-            } else if(!brailleConfig.invertY){
-              gy += brailleConfig.paperHeight
-            }
-
-            gcodeMoveToCached(brailleConfig.mirrorX ? -gx : gx, brailleConfig.mirrorY ? -gy : gy,0)
-            //GCODEdotposition.push ({x:(braille.mirrorX ? -gx : gx, y:braille.mirrorY ? -gy : gy)});
+        if(cell.indices.indexOf(brailleTable.dotMap[x][y]) != -1) {
+          const px = cell.xAct + x * brailleConfig.dotPitch
+          const py = cell.yAct + y * brailleConfig.dotPitch
+          let gx = brailleConfig.invertX ? - px : brailleConfig.paperWidth - px
+          let gy = -py // canvas y axis goes downward, printers goes upward
+          if(brailleConfig.delta) {
+            gx -= brailleConfig.paperWidth / 2
+            gy += brailleConfig.paperHeight / 2
+          } else if(!brailleConfig.invertY){
+            gy += brailleConfig.paperHeight
           }
-
-          // print dot at position
-          gcodePrintDotCached ()
-
+          gcodeMoveToCached(brailleConfig.mirrorX ? -gx : gx, brailleConfig.mirrorY ? -gy : gy,0)
+          gcodePrintDotCached()
         }
       }
     }
   }
 
-  const sortedgcode = buildoptimizedgcode()
-  return sortedgcode
+  return {
+    gcode: buildoptimizedgcode(),
+    dots: GCODEdotposition.length,
+    truncated,
+    unknownChars: Array.from(unknown),
+  }
 }
 
+export function brailleToGCode(textToWrite:string,settings:IBrailleSettings) {
+  return brailleToGCodeResult(textToWrite, settings)?.gcode
+}

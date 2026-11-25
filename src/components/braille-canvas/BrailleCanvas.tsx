@@ -2,16 +2,17 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as paper from 'paper'
-import { IPosition2D, brailleConfig } from '../../lib/script'
+import { IPosition2D } from '../../lib/script'
 import { Paper } from '@mui/material'
 
 export interface IBrailleCanvasProps {
   dots: IPosition2D[]
+  paperWidth: number
   className?: string
 }
 
-const A4width = brailleConfig.paperWidth
-const radius = 1
+const dotRadiusMm = 0.75 // ~1.5 mm embossed dot
+const minDotRadiusPx = 1.6
 
 const BrailleCanvas = (props: IBrailleCanvasProps) => {
   const ref = useRef<HTMLCanvasElement | null>(null)
@@ -22,7 +23,7 @@ const BrailleCanvas = (props: IBrailleCanvasProps) => {
   const handleWindowResize = () => {
     const width = ref.current?.clientWidth ?? 1
     const height = ref.current?.clientHeight ?? 1
-    setPxMmRatio(width / A4width)
+    setPxMmRatio(width / props.paperWidth)
     setWidth(width)
     setHeight(height)
   }
@@ -46,10 +47,14 @@ const BrailleCanvas = (props: IBrailleCanvasProps) => {
     paper.view.viewSize.height = height
     props.dots.forEach((dot) => {
       const _pt = new paper.Point(dot.x * pxMmRatio, dot.y * pxMmRatio)
-      const dotPath = new paper.Path.Circle(_pt, radius * 0.5 * pxMmRatio)
+      const dotPath = new paper.Path.Circle(_pt, Math.max(minDotRadiusPx, dotRadiusMm * pxMmRatio))
       dotPath.fillColor = new paper.Color('black')
     })
   }, [props.dots, width, pxMmRatio])
+
+  useEffect(() => {
+    handleWindowResize()
+  }, [props.paperWidth])
 
   return (
     <Paper className={props.className} variant="outlined">
