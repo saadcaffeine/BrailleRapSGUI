@@ -39,7 +39,8 @@ const defaultSettings: IBrailleSettings = {
   host: window.location.host,
   paper: 'A3 (BrailleRAP XL)',
   brailleSize: 'standard',
-  paperSensorInverted: false,
+  // MarlinBraille2 xl-sg: Y endstop TRIGGERED = no paper at the lever, open = paper present
+  paperSensorInverted: true,
 }
 
 const SETTINGS_KEY = 'braillerap-sg-settings'
@@ -47,7 +48,10 @@ const loadSettings = (): IBrailleSettings => {
   try {
     const saved = window.localStorage.getItem(SETTINGS_KEY)
     if (saved) {
-      const parsed = { ...defaultSettings, ...(JSON.parse(saved) as Partial<IBrailleSettings>) }
+      const raw = JSON.parse(saved) as Partial<IBrailleSettings> & { settingsVersion?: number }
+      // v2: paper sensor polarity follows the firmware (triggered = no paper); drop the old default
+      if ((raw.settingsVersion ?? 1) < 2) delete raw.paperSensorInverted
+      const parsed = { ...defaultSettings, ...raw }
       if (!brailleTableOptions.includes(parsed.tableName)) parsed.tableName = defaultSettings.tableName
       return parsed
     }
@@ -58,7 +62,7 @@ const loadSettings = (): IBrailleSettings => {
 }
 const saveSettings = (settings: IBrailleSettings) => {
   try {
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...settings, settingsVersion: 2 }))
   } catch (e) {
     console.warn('Could not save settings', e)
   }

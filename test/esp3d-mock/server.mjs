@@ -58,7 +58,7 @@ const marlin = (cmd) => {
   if (homing) { queued.push(cmd); return }           // blocked in G28: commands wait in the queue
   const [g, ...rest] = cmd.split(' ')
   if (g === 'M27') setTimeout(() => reply(printing ? `SD printing byte ${printing.pos}/${printing.total}` : 'Not SD printing'), 30)
-  else if (g === 'M119') setTimeout(() => { reply('Reporting endstop status'); reply('x_min: open'); reply('y_min: TRIGGERED'); reply('ok') }, 30)
+  else if (g === 'M119') setTimeout(() => { reply('Reporting endstop status'); reply('x_min: open'); reply('y_min: open'); reply('ok') }, 30)
   else if (g === 'M23') {
     const name = rest.join(' ').trim()
     if (sdFile && name.toLowerCase() === sdFile.name.toLowerCase()) { selected = sdFile; reply(`File opened: ${name} Size: ${sdFile.data.length}`); reply('File selected') }

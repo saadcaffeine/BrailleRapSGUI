@@ -14,7 +14,7 @@ Fork of [kyjanond/BrailleRapUI](https://github.com/kyjanond/BrailleRapUI) (Brail
   - LINK: green connected, amber busy/connecting, red lost or halted
   - SD: green ready, blue printing, red no card
   - X STOP: amber by default, green when the carriage is on the limit switch
-  - PAPER: amber by default, green only when a sheet is detected. If your sensor reads the other way, flip it in Settings.
+  - PAPER: amber by default, green only when a sheet is detected. By default `y_min: open` means paper is present, matching MarlinBraille2 xl-sg where TRIGGERED means no paper at the lever. Flip it in Settings if your wiring differs.
   - POWER: grey, not measured on this board yet
 - **Staged progress bar:** Homing (purple), then Paper (teal), then Embossing (green, filling dot by dot). The stage where a job failed or stopped turns red. The progress comes from `M118 BR:` markers in the G-code (`HOMING`, `PAPER`, `PRINT`, `DOT n/N`, `EJECT`, `END`). Each marker comes straight after an `M3 S1`, which waits for the move before it to finish, so it arrives as the dot is embossed.
 - **Live preview:** while embossing, the preview glows in a slow loop and a small solenoid icon taps next to the dot count. Embossed dots turn black, the latest is orange, and the rest are grey. ESP3D sends Marlin's output to the browser in bursts every 500 ms (`FLUSHTIMEOUT` in ESP3DLib), so the dot count and preview update in steps. A flash per dot can't be in time with the solenoid, which is why the page uses a steady animation.

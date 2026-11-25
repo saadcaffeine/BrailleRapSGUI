@@ -49,10 +49,11 @@ with sync_playwright() as p:
     check(wait_led(page, 'LINK', 'green'), 'LINK green when connected')
     check(wait_led(page, 'SD', 'green'), 'SD green (card ok)')
     check(wait_led(page, 'X STOP', 'amber'), 'X STOP amber when not on the limit switch')
+    check(page.evaluate("() => !localStorage.getItem('braillerap-sg-settings') || JSON.parse(localStorage.getItem('braillerap-sg-settings')).paperSensorInverted !== false"), 'default paper polarity: open = paper')
     check(wait_led(page, 'PAPER', 'green'), 'PAPER green when sensor says paper present')
-    page.click('[aria-label=Settings]'); page.get_by_label("paper sensor reads 'open' when paper is in").check(); btn(page, 'Save and exit').click()
-    check(wait_led(page, 'PAPER', 'amber', 5), 'PAPER amber after inverting the sensor setting')
     page.click('[aria-label=Settings]'); page.get_by_label("paper sensor reads 'open' when paper is in").uncheck(); btn(page, 'Save and exit').click()
+    check(wait_led(page, 'PAPER', 'amber', 5), 'PAPER amber after inverting the sensor setting')
+    page.click('[aria-label=Settings]'); page.get_by_label("paper sensor reads 'open' when paper is in").check(); btn(page, 'Save and exit').click()
     btn(page, 'GENERATE').click()   # changing settings clears the generated G-code
 
     # staged progress, disabled buttons, per-dot flashing

@@ -44,7 +44,8 @@ const xStopLed = (v: IEmbosserStatus['xEndstop']): ILed => {
   return { label: 'X STOP', colour: 'grey', detail: 'X endstop: unknown' }
 }
 
-// PAPER: green only when a sheet is detected, amber otherwise
+// PAPER: green only when a sheet is detected, amber otherwise.
+// inverted=true (default): M119 y_min 'open' = paper present (MarlinBraille2 xl-sg wiring)
 const paperLed = (v: IEmbosserStatus['paperSensor'], inverted: boolean): ILed => {
   if (v === 'unknown') return { label: 'PAPER', colour: 'grey', detail: 'Paper sensor: unknown' }
   const present = (v === 'triggered') !== inverted
