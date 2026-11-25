@@ -61,7 +61,7 @@ with sync_playwright() as p:
     # 2. translation cases
     for text, exp in CASES:
         ta.fill(text); page.click('text=GENERATE')
-        page.click('text=PRINT'); page.wait_for_function("document.body.innerText.includes('state: done')", timeout=20000)
+        page.click('text=PRINT'); page.wait_for_function("document.body.innerText.includes('Done')", timeout=20000)
         g = open('uploaded.gco').read()
         dots, lines = decode(g)
         got = lines.get(0, {}); want = expect_cells(exp)
@@ -91,8 +91,8 @@ with sync_playwright() as p:
 
     # 6. cancel mid-print
     ta.fill('Cancel test 123'); page.click('text=GENERATE'); page.click('text=PRINT')
-    page.wait_for_selector('text=CANCEL', timeout=10000); page.click('text=CANCEL')
-    page.wait_for_function("document.body.innerText.includes('state: cancelled')", timeout=15000)
+    page.get_by_role('button', name='CANCEL', exact=True).wait_for(timeout=10000); page.get_by_role('button', name='CANCEL', exact=True).click()
+    page.wait_for_function("document.body.innerText.includes('Cancelled')", timeout=15000)
     if 'M524' not in server_log(): failures.append('M524 not sent on cancel')
     print('cancel: ok')
     page.screenshot(path='phone.png', full_page=True)

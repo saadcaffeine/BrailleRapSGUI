@@ -1,13 +1,15 @@
 //@ts-ignore: : needs React
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import TextInput from '../components/text-input/TextInput'
 import Controls from '../components/controls/Controls'
 import { IPosition2D, brailleToGCodeResult, paperPresets } from '../lib/script'
 import BrailleCanvas from '../components/braille-canvas/BrailleCanvas'
 import { gcodeParse } from '../lib/brailleDraw'
 import { ISerialState, sendSerial, isSerialCompatible } from '../lib/serial'
-import { IEsp3dJob, printViaEsp3d } from '../lib/esp3d'
+import { embosser, IEmbosserStatus, IJobState, JobError } from '../lib/embosser'
+import StatusBar from '../components/status-bar/StatusBar'
+import JobPanel from '../components/job-panel/JobPanel'
 import UiAlert, { IUiAlertProps } from '../components/ui-alert/UiAlert'
 import './brailleUi.scss'
 import UiHeader from '../components/ui-header/UiHeader'
@@ -19,7 +21,7 @@ import { brailleTableOptions } from '../assets/language-tables/brailleTable'
 import PrintState from '../components/print-state/PrintState'
 
 let isPrinting = false
-let currentJob: IEsp3dJob | undefined
+let currentJob: { done: Promise<void>; cancel: () => Promise<void> } | undefined
 
 // Served from the embosser (plain http on a LAN address) -> WiFi; otherwise USB
 const servedFromEmbosser =
@@ -73,7 +75,34 @@ const BrailleUI = () => {
   const [gcode, setGcode] = useState('')
   const [paths, setPaths] = useState([] as IPosition2D[])
   const [printState, setPrintState] = useState(defualtSerialState)
-  const [alert, setAlert] = useState({
+  const [embStatus, setEmbStatus] = useState<IEmbosserStatus>(embosser.status)
+  const [job, setJob] = useState<IJobState>({ phase: 'idle', progress: 0 })
+  const wifi = brailleSettings.connection === 'wifi'
+
+  // live status from the embosser while in WiFi mode
+  useEffect(() => {
+    if (!wifi) return
+    embosser.start(brailleSettings.host)
+    const off = embosser.subscribe(setEmbStatus)
+    return () => {
+      off()
+      embosser.stop()
+    }
+  }, [wifi, brailleSettings.host])
+
+  // a job is running on the SD card that this page did not start (page reloaded,
+  // another phone, contact lost and regained): follow it so it can be watched and cancelled
+  useEffect(() => {
+    if (!wifi || isPrinting || !embStatus.sdPrinting) return
+    isPrinting = true
+    const watched = embosser.watchJob(setJob)
+    currentJob = watched
+    watched.done.catch(handleJobError).finally(() => {
+      isPrinting = false
+      currentJob = undefined
+    })
+  }, [wifi, embStatus.sdPrinting])
+  const [alert, setAlert] = useState<IUiAlertProps>({
     title: 'ERROR',
     message: '',
     show: false,
@@ -104,6 +133,56 @@ const BrailleUI = () => {
     }
     if (paths.length > 0) [setPaths([])]
   }
+  const closeAlert = () => setAlert({ show: false })
+
+  // upload === undefined -> re-run the file already on the SD card (Retry)
+  const runWifiJob = (upload: string | undefined) => {
+    if (isPrinting) {
+      showAlert('WARNING', 'The embosser is already busy with a job.')
+      return
+    }
+    isPrinting = true
+    embosser
+      .print(upload, setJob)
+      .then((j) => {
+        currentJob = j
+        return j.done
+      })
+      .catch(handleJobError)
+      .finally(() => {
+        isPrinting = false
+        currentJob = undefined
+      })
+  }
+
+  const restartEmbosser = () => {
+    setJob({ phase: 'connecting', progress: 0, message: 'Restarting the embosser…' })
+    void embosser.restart()
+    setAlert({
+      title: 'RESTARTING',
+      message: 'The embosser is restarting. Wait until the LINK light is green, check the paper, then press Retry.',
+      show: true,
+      handleClose: closeAlert,
+      actions: [{ label: 'RETRY', onClick: () => { closeAlert(); runWifiJob(undefined) } }],
+    })
+  }
+
+  function handleJobError(err: unknown) {
+    const e = err as JobError
+    const kind = e instanceof JobError ? e.kind : 'other'
+    setJob({ phase: 'failed', progress: 0, message: kind === 'paper' ? 'paper did not load' : undefined })
+    const actions: IUiAlertProps['actions'] = []
+    if (kind === 'paper' || kind === 'lost') actions.push({ label: 'RETRY', onClick: () => { closeAlert(); runWifiJob(undefined) } })
+    if (kind === 'halted' || kind === 'not-responding') actions.push({ label: 'RESTART EMBOSSER', onClick: restartEmbosser })
+    setAlert({
+      title: kind === 'paper' ? 'PAPER' : kind === 'halted' ? 'EMBOSSER STOPPED' : 'ERROR',
+      message: e?.message || String(err),
+      show: true,
+      handleClose: closeAlert,
+      actions,
+    })
+  }
+
   const handleSendClicked = () => {
     if (isPrinting) {
       showAlert('WARNING', 'Already printing. Wait!')
@@ -112,24 +191,8 @@ const BrailleUI = () => {
       showAlert('ERROR', 'There is nothing to print')
       return
     }
-    if (brailleSettings.connection === 'wifi') {
-      isPrinting = true
-      printViaEsp3d(gcode, {
-        host: brailleSettings.host,
-        onState: (state: ISerialState) => setPrintState(state),
-      })
-        .then((job) => {
-          currentJob = job
-          return job.done
-        })
-        .catch((err: Error) => {
-          setPrintState({ state: 'idle', progress: 0 })
-          showAlert('ERROR', err.message)
-        })
-        .finally(() => {
-          isPrinting = false
-          currentJob = undefined
-        })
+    if (wifi) {
+      runWifiJob(gcode)
       return
     }
     if (!isSerialCompatible()) {
@@ -187,6 +250,7 @@ const BrailleUI = () => {
     <div>
       <div className="br-ui">
         <UiHeader className="br-ui-header" />
+        {wifi && <StatusBar status={embStatus} />}
         <div className="br-ui-input">
           <TextInput
             className="br-ui-input__text"
@@ -203,16 +267,20 @@ const BrailleUI = () => {
             canPrint={gcode.length > 0}
             className="br-ui-controls__btns"
             onSendClicked={handleSendClicked}
-            canCancel={brailleSettings.connection === 'wifi' && printState.state === 'printing'}
+            canCancel={wifi && ['loading paper', 'printing', 'starting', 'no contact'].includes(job.phase)}
             onCancelClicked={handleCancelClicked}
             onGenerateClicked={handleGenerateClicked}
             onDebugClicked={handleDebugClicked}
             onSettingsClicked={handleSettingsClicked}
           />
-          <PrintState
-            className="br-ui-controls__print-state"
-            state={printState}
-          />
+          {wifi ? (
+            <JobPanel className="br-ui-controls__print-state" job={job} />
+          ) : (
+            <PrintState
+              className="br-ui-controls__print-state"
+              state={printState}
+            />
+          )}
         </div>
         <UiFooter className="br-ui-footer" />
       </div>
