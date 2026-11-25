@@ -20,23 +20,36 @@ const clients = new Set()
 wss.on('connection', (ws) => { if (booting) return ws.close(); clients.add(ws); ws.send('CURRENT_ID:0'); ws.send('ACTIVE_ID:0'); ws.on('close', () => clients.delete(ws)) })
 const reply = (text) => { const b = Buffer.from(text + '\n'); for (const c of clients) c.send(b, { binary: true }) }
 
-const runPrint = () => {
-  printing.timer = setInterval(() => {
-    printing.pos = Math.min(printing.total, printing.pos + Math.ceil(printing.total / 5))
-    if (printing.pos >= printing.total) { clearInterval(printing.timer); printing = null; reply('Done printing file') }
-  }, 1000)
+// Replay the uploaded file: echo M118 markers like Marlin does, advance the byte position.
+// G28 X / G28 Y block for scenario.home/2 seconds each with busy keepalives.
+const runFile = () => {
+  const text = selected.data.toString()
+  const lines = []; let off = 0
+  for (const l of text.split('\n')) { off += l.length + 1; lines.push({ l: l.trim(), off }) }
+  let i = 0
+  const step = () => {
+    if (!printing) return
+    if (i >= lines.length) { printing = null; reply('Done printing file'); return }
+    const { l, off } = lines[i++]; printing.pos = off
+    if (l.startsWith('M118 ')) reply(l.slice(5))
+    if (l.startsWith('G28')) {
+      if (l.startsWith('G28 Y') && scenario.mode === 'paperfail') {
+        return block(scenario.home / 2, () => { reply('Error:Paper not loaded'); printing = null; flushQueue() })
+      }
+      if (scenario.mode === 'kill' && (l.startsWith('G28 Y') || !text.includes('G28 Y'))) {
+        return block(scenario.home / 2, () => { reply('Error:Printer halted. kill() called!'); printing = null; halted = true; queued = [] })
+      }
+      return block(scenario.home / 2, () => { flushQueue(); if (printing) printing.timer = setTimeout(step, 0) })
+    }
+    printing.timer = setTimeout(step, l.startsWith('M3 S1') ? 60 : 5)
+  }
+  printing.timer = setTimeout(step, 0)
 }
-
-const startHoming = () => {
+const flushQueue = () => { const q = queued; queued = []; q.forEach(marlin) }
+const block = (secs, then) => {
   homing = true
   busyTimer = setInterval(() => reply('echo:busy: processing'), 2000)
-  setTimeout(() => {
-    clearInterval(busyTimer); homing = false
-    if (scenario.mode === 'paperfail') { reply('Error:Paper not loaded'); printing = null }
-    else if (scenario.mode === 'kill') { reply('Error:Printer halted. kill() called!'); printing = null; halted = true; queued = []; return }
-    else runPrint()
-    const q = queued; queued = []; q.forEach(marlin)
-  }, scenario.home * 1000)
+  setTimeout(() => { clearInterval(busyTimer); homing = false; then() }, secs * 1000)
 }
 
 const marlin = (cmd) => {
@@ -52,13 +65,13 @@ const marlin = (cmd) => {
     else reply(`open failed, File: ${name}.`)
     reply('ok')
   } else if (g === 'M24') {
-    if (selected) { printing = { total: selected.data.length, pos: 1 }; reply('ok'); startHoming() } else reply('ok')
-  } else if (g === 'M524') { if (printing) { clearInterval(printing.timer); printing = null }; reply('ok') }
+    if (selected) { printing = { total: selected.data.length, pos: 1 }; reply('ok'); runFile() } else reply('ok')
+  } else if (g === 'M524') { if (printing) { clearTimeout(printing.timer); printing = null }; reply('ok') }
   else reply('ok')
 }
 
 const restart = () => {
-  booting = true; halted = false; homing = false; printing = null; queued = []
+  booting = true; halted = false; homing = false; if (printing) clearTimeout(printing.timer); printing = null; queued = []; clearInterval(busyTimer)
   for (const c of clients) c.close()
   setTimeout(() => { booting = false; setTimeout(() => { reply('start'); reply('Marlin 2.1.1.2') }, 300) }, 1500)
 }

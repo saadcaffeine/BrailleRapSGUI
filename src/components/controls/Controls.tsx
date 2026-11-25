@@ -3,56 +3,44 @@
 import React from 'react'
 import { Button } from '@mui/material'
 
-
-
 export interface IControlsProps {
-  className?:string
+  className?: string
   canPrint: boolean
+  busy?: boolean            // a job is running: PRINT and GENERATE are disabled
   canCancel?: boolean
-  onCancelClicked?: ()=>void
-  onSendClicked: ()=>void
-  onGenerateClicked: ()=>void
-  onSettingsClicked: ()=>void
-  onDebugClicked?: ()=>void
+  canStop?: boolean
+  showStop?: boolean
+  onCancelClicked?: () => void
+  onStopClicked?: () => void
+  onSendClicked: () => void
+  onGenerateClicked: () => void
 }
 
-const Controls = (props:IControlsProps)=>{
-  const handleSend = ()=>{
-    props.onSendClicked()
-  }
-
-  const handleGenerate = ()=>{
-    props.onGenerateClicked()
-  }
-
-  const handleSettings = ()=>{
-    props.onSettingsClicked()
-  }
-
-  const handleDebug = ()=>{
-    if (props.onDebugClicked){
-      props.onDebugClicked()
-    }
-  }
+const Controls = (props: IControlsProps) => {
   return (
-    <div className={`${props.className?props.className:''}`}>
-      <Button variant='contained' onClick={handleGenerate}>
+    <div className={`${props.className ? props.className : ''}`}>
+      <Button variant='contained' disabled={props.busy} onClick={props.onGenerateClicked}>
         GENERATE
       </Button>
-      <Button disabled={!props.canPrint} variant='contained' onClick={handleSend}>
+      <Button disabled={!props.canPrint || props.busy} variant='contained' onClick={props.onSendClicked}>
         PRINT
       </Button>
       {props.canCancel && (
-        <Button variant='outlined' color='error' onClick={()=>props.onCancelClicked && props.onCancelClicked()}>
+        <Button variant='outlined' color='error' onClick={() => props.onCancelClicked && props.onCancelClicked()}>
           CANCEL
         </Button>
       )}
-      <Button variant='contained' onClick={handleSettings}>
-        SETTINGS
-      </Button>
-      {/* <Button variant='contained' onClick={handleDebug}>
-        DEBUG
-      </Button> */}
+      {props.showStop && (
+        <Button
+          variant='contained'
+          color='error'
+          disabled={!props.canStop}
+          onClick={() => props.onStopClicked && props.onStopClicked()}
+          title='Stops all motion at once by restarting the embosser controller'
+        >
+          STOP
+        </Button>
+      )}
     </div>
   )
 }

@@ -37,18 +37,24 @@ export interface IBrailleSettings {
   host: string
   paper: PaperPreset
   brailleSize: BrailleSize
+  paperSensorInverted: boolean   // false: Y endstop TRIGGERED = paper present
 }
 
 interface IUiSettings {
   settings: IBrailleSettings
   show: boolean
   handleClose: (settings: IBrailleSettings) => void
+  onRestartEmbosser?: () => void
 }
 
 const UiSettings = (props: IUiSettings) => {
   const [state, setState] = useState(props.settings)
+  const [confirmRestart, setConfirmRestart] = useState(false)
   useEffect(() => {
-    if (props.show) setState(props.settings)
+    if (props.show) {
+      setState(props.settings)
+      setConfirmRestart(false)
+    }
   }, [props.show])
 
   const handleClose = () => {
@@ -128,6 +134,14 @@ const UiSettings = (props: IUiSettings) => {
           />
         )}
         {state.connection === 'usb' && select('baudRate', 'Baud rate', BaudRateArray)}
+        {state.connection === 'wifi' && (
+          <FormControl>
+            <FormControlLabel
+              control={<Switch checked={state.paperSensorInverted} onChange={switchChanged} name="paperSensorInverted" />}
+              label="paper sensor reads 'open' when paper is in"
+            />
+          </FormControl>
+        )}
         <FormControl>
           <FormControlLabel
             control={<Switch checked={state.homeY} onChange={switchChanged} name="homeY" />}
@@ -155,7 +169,23 @@ const UiSettings = (props: IUiSettings) => {
           </FormControl>
         )}
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ justifyContent: 'space-between' }}>
+        {state.connection === 'wifi' && props.onRestartEmbosser ? (
+          <Button
+            color="error"
+            variant={confirmRestart ? 'contained' : 'text'}
+            onClick={() => {
+              if (!confirmRestart) {
+                setConfirmRestart(true)
+                return
+              }
+              setConfirmRestart(false)
+              props.onRestartEmbosser?.()
+            }}
+          >
+            {confirmRestart ? 'Tap again to restart' : 'Restart embosser'}
+          </Button>
+        ) : <span />}
         <Button onClick={handleClose}>Save and exit</Button>
       </DialogActions>
     </Dialog>

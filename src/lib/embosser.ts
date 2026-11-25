@@ -20,8 +20,14 @@ export type LinkState = 'connecting' | 'ok' | 'busy' | 'lost' | 'halted'
 export type SdState = 'ok' | 'missing' | 'unknown'
 export type EndstopState = 'open' | 'triggered' | 'unknown'
 
+// where the running job is, from the M118 BR: markers in the G-code
+export type JobStage = 'homing' | 'paper' | 'printing' | 'eject' | 'end'
+
 export interface IEmbosserStatus {
   link: LinkState
+  stage?: JobStage
+  dot: number
+  dots: number
   sd: SdState
   xEndstop: EndstopState
   paperSensor: EndstopState
@@ -33,14 +39,22 @@ export interface IEmbosserStatus {
 }
 
 export type JobPhase =
-  | 'idle' | 'connecting' | 'uploading' | 'starting' | 'loading paper'
-  | 'printing' | 'cancelling' | 'done' | 'cancelled' | 'failed' | 'no contact'
+  | 'idle' | 'connecting' | 'uploading' | 'starting' | 'homing' | 'loading paper'
+  | 'printing' | 'ejecting' | 'cancelling' | 'done' | 'cancelled' | 'failed' | 'no contact' | 'stopped'
 
 export interface IJobState {
   phase: JobPhase
-  progress: number
+  progress: number       // overall (uploading) or print progress 0-100
+  dot?: number
+  dots?: number
+  homeY?: boolean        // false when the job skips paper loading
+  failedAt?: JobStage
   message?: string
 }
+
+const stagePhase = (stage?: JobStage): JobPhase | undefined =>
+  stage === 'homing' ? 'homing' : stage === 'paper' ? 'loading paper'
+    : stage === 'printing' ? 'printing' : stage === 'eject' || stage === 'end' ? 'ejecting' : undefined
 
 export type JobErrorKind = 'paper' | 'halted' | 'lost' | 'busy' | 'no-card' | 'upload' | 'not-responding' | 'other'
 
@@ -70,7 +84,7 @@ export class Embosser {
   host?: string
   status: IEmbosserStatus = {
     link: 'connecting', sd: 'unknown', xEndstop: 'unknown', paperSensor: 'unknown',
-    sdPrinting: false, progress: 0, halted: false,
+    sdPrinting: false, progress: 0, halted: false, dot: 0, dots: 0,
   }
   private ws?: WebSocket
   private wsPort?: number
@@ -82,6 +96,8 @@ export class Embosser {
   // last M27 answer and when that M27 was sent (to tell a fresh "Not SD printing" from a stale one)
   lastM27?: { printing: boolean; sentAt: number }
   lastDoneAt = 0
+  stoppedAt = 0
+  stageAt = 0
   private tick = 0
   private listeners: Listener[] = []
   private lineListeners: LineListener[] = []
@@ -170,6 +186,20 @@ export class Embosser {
       patch.sdPrinting = false
     }
     if (/busy:/i.test(line)) this.lastBusy = now
+    const mk = /BR:(HOMING|PAPER|PRINT|DOT|EJECT|END)(?:\s+(\d+)\/(\d+))?/.exec(line)
+    if (mk) {
+      this.stageAt = now
+      const kind = mk[1]
+      if (kind === 'HOMING') patch.stage = 'homing'
+      else if (kind === 'PAPER') patch.stage = 'paper'
+      else if (kind === 'EJECT') patch.stage = 'eject'
+      else if (kind === 'END') patch.stage = 'end'
+      else {
+        patch.stage = 'printing'
+        patch.dot = parseInt(mk[2] || '0', 10)
+        patch.dots = parseInt(mk[3] || '0', 10)
+      }
+    }
     if (/SD card ok/i.test(line)) patch.sd = 'ok'
     if (/SD init fail|No media|No SD card/i.test(line)) patch.sd = 'missing'
     if (/Done printing file/i.test(line)) { patch.sdPrinting = false; patch.progress = 100; this.lastDoneAt = now }
@@ -265,6 +295,7 @@ export class Embosser {
 
   // ESP3D restarts the whole ESP32, which also restarts Marlin (needed after a halt)
   async restart() {
+    this.stoppedAt = Date.now()
     try {
       await sendCommand('[ESP444]RESTART', this.host)
     } catch {
@@ -288,7 +319,7 @@ export class Embosser {
     if (RE_SD_PRINTING.test(st)) throw new JobError('busy', 'The embosser is already printing. Wait for it to finish or cancel it.')
 
     this.jobActive = true
-    this.update({ lastError: undefined, progress: 0 })
+    this.update({ lastError: undefined, progress: 0, stage: undefined, dot: 0, dots: 0 })
     try {
       if (gcode !== undefined) {
         onState({ phase: 'uploading', progress: 0 })
@@ -331,17 +362,31 @@ export class Embosser {
       }
       const handle = (s: IEmbosserStatus) => {
         if (finished) return
+        const stageNow = this.stageAt > startedAt ? s.stage : undefined
+        if (this.stoppedAt > startedAt) {
+          finish(() => {
+            onState({ phase: 'stopped', progress: s.dots ? (s.dot / s.dots) * 100 : 0, dot: s.dot, dots: s.dots, failedAt: stageNow, message: 'Stopped. The embosser is restarting.' })
+            resolve()
+          })
+          return
+        }
         if (s.lastError === 'Paper not loaded') {
-          finish(() => reject(new JobError('paper', 'Paper did not load. Put a sheet in the feeder (against the paper sensor), then press Retry.')))
+          finish(() => {
+            onState({ phase: 'failed', progress: 0, failedAt: 'paper', message: 'paper did not load' })
+            reject(new JobError('paper', 'Paper did not load. Put a sheet in the feeder (against the paper sensor), then press Retry.'))
+          })
           return
         }
         if (s.halted) {
-          finish(() => reject(new JobError('halted', `The embosser stopped: ${s.haltReason || 'firmware halted'}. Restart it, then press Retry.`)))
+          finish(() => {
+            onState({ phase: 'failed', progress: 0, failedAt: stageNow || 'homing', message: 'embosser stopped' })
+            reject(new JobError('halted', `The embosser stopped: ${s.haltReason || 'firmware halted'}. Restart it, then press Retry.`))
+          })
           return
         }
         if (s.link === 'lost') {
           lostSince = lostSince || Date.now()
-          onState({ phase: 'no contact', progress: s.progress, message: 'No contact with the embosser. The print continues from the SD card if it is still running.' })
+          onState({ phase: 'no contact', progress: s.dots ? (s.dot / s.dots) * 100 : s.progress, dot: s.dot, dots: s.dots, message: 'No contact with the embosser. The print continues from the SD card if it is still running.' })
           if (Date.now() - lostSince > 60000) {
             finish(() => reject(new JobError('lost', 'Lost contact with the embosser for over a minute. If it is still embossing, this page will show it again when contact returns.')))
           }
@@ -351,18 +396,20 @@ export class Embosser {
         const m27 = this.lastM27
         const freshIdle = m27 !== undefined && !m27.printing && m27.sentAt > startedAt + 300
         const jobOver = (seenPrinting && !s.sdPrinting) || freshIdle || this.lastDoneAt > startedAt
+        const printPct = s.dots ? (s.dot / s.dots) * 100 : 0
+        const base = { dot: s.dot, dots: s.dots }
         if (s.sdPrinting && !jobOver) {
           seenPrinting = true
-          const loading = s.progress < 1 || (s.link === 'busy' && s.progress < 5)
-          onState({ phase: cancelled ? 'cancelling' : loading ? 'loading paper' : 'printing', progress: s.progress })
+          const phase = cancelled ? 'cancelling' : stagePhase(stageNow) || (s.progress < 1 ? 'homing' : 'printing')
+          onState({ phase, progress: stageNow ? printPct : s.progress, ...base })
         } else if (jobOver) {
           finish(() => {
-            onState({ phase: cancelled ? 'cancelled' : 'done', progress: cancelled ? 0 : 100 })
+            onState({ phase: cancelled ? 'cancelled' : 'done', progress: cancelled ? printPct : 100, ...base, failedAt: cancelled ? stageNow : undefined })
             resolve()
           })
-        } else if (s.link === 'busy') {
+        } else if (s.link === 'busy' || stageNow) {
           // M24 accepted; Marlin is homing / feeding paper and not answering M27 yet
-          onState({ phase: cancelled ? 'cancelling' : 'loading paper', progress: 0 })
+          onState({ phase: cancelled ? 'cancelling' : stagePhase(stageNow) || 'homing', progress: printPct, ...base })
         }
       }
       unsubscribe = this.subscribe(handle)

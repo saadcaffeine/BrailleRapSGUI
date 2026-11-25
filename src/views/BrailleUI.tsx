@@ -39,6 +39,7 @@ const defaultSettings: IBrailleSettings = {
   host: window.location.host,
   paper: 'A3 (BrailleRAP XL)',
   brailleSize: 'standard',
+  paperSensorInverted: false,
 }
 
 const SETTINGS_KEY = 'braillerap-sg-settings'
@@ -78,6 +79,9 @@ const BrailleUI = () => {
   const [embStatus, setEmbStatus] = useState<IEmbosserStatus>(embosser.status)
   const [job, setJob] = useState<IJobState>({ phase: 'idle', progress: 0 })
   const wifi = brailleSettings.connection === 'wifi'
+  const jobBusy = wifi
+    ? ['connecting', 'uploading', 'starting', 'homing', 'loading paper', 'printing', 'ejecting', 'cancelling', 'no contact'].includes(job.phase)
+    : ['connecting', 'connected', 'printing'].includes(printState.state)
 
   // live status from the embosser while in WiFi mode
   useEffect(() => {
@@ -142,8 +146,9 @@ const BrailleUI = () => {
       return
     }
     isPrinting = true
+    const homeY = brailleSettings.homeY
     embosser
-      .print(upload, setJob)
+      .print(upload, (st) => setJob({ ...st, homeY }))
       .then((j) => {
         currentJob = j
         return j.done
@@ -170,7 +175,13 @@ const BrailleUI = () => {
   function handleJobError(err: unknown) {
     const e = err as JobError
     const kind = e instanceof JobError ? e.kind : 'other'
-    setJob({ phase: 'failed', progress: 0, message: kind === 'paper' ? 'paper did not load' : undefined })
+    // keep where it failed (set by the job watcher) so the progress bar marks that stage
+    setJob((prev) => ({
+      ...prev,
+      phase: 'failed',
+      failedAt: prev.phase === 'failed' ? prev.failedAt : kind === 'paper' ? 'paper' : undefined,
+      message: kind === 'paper' ? 'paper did not load' : kind === 'halted' ? 'embosser stopped' : undefined,
+    }))
     const actions: IUiAlertProps['actions'] = []
     if (kind === 'paper' || kind === 'lost') actions.push({ label: 'RETRY', onClick: () => { closeAlert(); runWifiJob(undefined) } })
     if (kind === 'halted' || kind === 'not-responding') actions.push({ label: 'RESTART EMBOSSER', onClick: restartEmbosser })
@@ -215,6 +226,19 @@ const BrailleUI = () => {
       })
       .finally(() => (isPrinting = false))
   }
+  // STOP: Marlin on the ESP32 has no working emergency parser, so M112 would wait in the
+  // queue. Restarting the controller through ESP3D stops all motion immediately.
+  const handleStopClicked = () => {
+    const running = isPrinting
+    void embosser.restart()
+    if (!running) setJob({ phase: 'stopped', progress: 0, message: 'The embosser is restarting.' })
+  }
+  const handleRestartFromSettings = () => {
+    setShowSettings(false)
+    void embosser.restart()
+    if (!isPrinting) setJob({ phase: 'idle', progress: 0, message: 'Restarting the embosser…' })
+    showAlert('RESTARTING', 'The embosser is restarting. The LINK light turns green when it is ready.')
+  }
   const handleCancelClicked = () => {
     if (!currentJob) return
     currentJob.cancel().catch((err: Error) => showAlert('ERROR', `Cancel failed: ${err.message}`))
@@ -245,12 +269,11 @@ const BrailleUI = () => {
   const handleSettingsClicked = () => {
     setShowSettings(true)
   }
-  const handleDebugClicked = () => {}
   return (
     <div>
       <div className="br-ui">
-        <UiHeader className="br-ui-header" />
-        {wifi && <StatusBar status={embStatus} />}
+        <UiHeader className="br-ui-header" onSettingsClicked={handleSettingsClicked} />
+        {wifi && <StatusBar status={embStatus} paperSensorInverted={brailleSettings.paperSensorInverted} />}
         <div className="br-ui-input">
           <TextInput
             className="br-ui-input__text"
@@ -260,18 +283,21 @@ const BrailleUI = () => {
             className="br-ui-input__braille-canvas"
             dots={paths}
             paperWidth={(paperPresets[brailleSettings.paper] || paperPresets['A3 (BrailleRAP XL)']).paperWidth}
+            embossed={wifi && ['printing', 'cancelling', 'ejecting'].includes(job.phase) ? job.dot ?? 0 : undefined}
           />
         </div>
         <div className="br-ui-controls">
           <Controls
             canPrint={gcode.length > 0}
+            busy={jobBusy}
             className="br-ui-controls__btns"
             onSendClicked={handleSendClicked}
-            canCancel={wifi && ['loading paper', 'printing', 'starting', 'no contact'].includes(job.phase)}
+            canCancel={wifi && ['homing', 'loading paper', 'printing', 'starting', 'no contact'].includes(job.phase)}
             onCancelClicked={handleCancelClicked}
+            showStop={wifi}
+            canStop={embStatus.link !== 'connecting'}
+            onStopClicked={handleStopClicked}
             onGenerateClicked={handleGenerateClicked}
-            onDebugClicked={handleDebugClicked}
-            onSettingsClicked={handleSettingsClicked}
           />
           {wifi ? (
             <JobPanel className="br-ui-controls__print-state" job={job} />
@@ -288,6 +314,7 @@ const BrailleUI = () => {
         show={showSettings}
         handleClose={handleSettingsClose}
         settings={brailleSettings}
+        onRestartEmbosser={handleRestartFromSettings}
       />
       <UiAlert {...alert} />
     </div>

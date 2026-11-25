@@ -50,7 +50,7 @@ with sync_playwright() as p:
     page.goto(BASE); page.wait_for_selector('text=GENERATE')
 
     # 1. defaults when served from the embosser
-    page.click('text=SETTINGS')
+    page.click('[aria-label=Settings]')
     page.wait_for_selector('text=Embosser connection')
     body = page.inner_text('div[role=dialog]')
     for want in ['English UEB grade 1', 'A3 (BrailleRAP XL)', 'standard', 'WiFi (SD card on the embosser)']:
@@ -71,7 +71,8 @@ with sync_playwright() as p:
 
     # 3. G-code sanity for the last job
     xs = [d[0] for d in dots]; ys = [d[1] for d in dots]
-    if not g.startswith('G28 X;'): failures.append('gcode does not start with G28 X')
+    if not g.startswith('M118 BR:HOMING\nG28 X;'): failures.append('gcode does not start with homing marker + G28 X')
+    if g.count('M118 BR:DOT') != len(dots): failures.append('one DOT marker per dot expected')
     if max(xs) > 297 - MARGIN or max(ys) > 420 - MARGIN: failures.append('dot outside A3 printable area')
     if 'G1 X0.00 Y420.00;' not in g: failures.append('no eject move to Y420 with X0')
     if g.count('M3 S1') != len(dots): failures.append('dot count mismatch')

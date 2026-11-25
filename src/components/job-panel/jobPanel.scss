@@ -1,0 +1,75 @@
+$homing: #8e6cd1;
+$paper: #1f9bb0;
+$print: #2fbf4a;
+$upload: #2f7de0;
+
+.br-job {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  &__bar {
+    display: flex;
+    gap: 3px;
+    height: 18px;
+  }
+
+  &__seg {
+    position: relative;
+    flex: 1 1 0;
+    background: #e6e8ec;
+    border-radius: 3px;
+    overflow: hidden;
+
+    &--printing { flex: 3 1 0; }
+    &--upload { flex: 1 1 100%; }
+    &--skipped { opacity: 0.35; }
+  }
+
+  &__fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    transition: width 0.25s ease-out;
+  }
+
+  &__seg--homing &__fill { background: $homing; }
+  &__seg--paper &__fill { background: $paper; }
+  &__seg--printing &__fill { background: $print; }
+  &__seg--upload &__fill { background: $upload; }
+  &__seg--failed &__fill { background: #e0352b !important; }
+  &__seg--active:not(.br-job__seg--printing) &__fill {
+    background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.25) 0 6px, transparent 6px 12px);
+    background-size: 17px 17px;
+    animation: br-job-stripes 0.8s linear infinite;
+  }
+
+  &__seg-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Roboto, sans-serif;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #334;
+    mix-blend-mode: hard-light;
+  }
+  &__seg--done &__seg-label, &__seg--active &__seg-label, &__seg--failed &__seg-label { color: #fff; mix-blend-mode: normal; text-shadow: 0 0 2px rgba(0,0,0,.4); }
+}
+
+@keyframes br-job-stripes {
+  to { background-position: 17px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .br-job__seg--active .br-job__fill { animation: none; }
+}
+
+// partly filled embossing segment: keep the label readable over both colours
+.br-job__seg--printing.br-job__seg--active .br-job__seg-label {
+  color: #1b2a3a;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff;
+}

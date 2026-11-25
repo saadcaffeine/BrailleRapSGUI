@@ -37,24 +37,35 @@ const sdLed = (s: IEmbosserStatus): ILed => {
   return { label: 'SD', colour: 'grey', detail: 'SD card status unknown' }
 }
 
-const endstopLed = (label: string, v: IEmbosserStatus['xEndstop'], what: string): ILed => {
-  if (v === 'triggered') return { label, colour: 'amber', detail: `${what}: triggered` }
-  if (v === 'open') return { label, colour: 'green', detail: `${what}: open` }
-  return { label, colour: 'grey', detail: `${what}: unknown` }
+// X STOP: green when the carriage is on the limit switch, amber otherwise
+const xStopLed = (v: IEmbosserStatus['xEndstop']): ILed => {
+  if (v === 'triggered') return { label: 'X STOP', colour: 'green', detail: 'X carriage is on the limit switch' }
+  if (v === 'open') return { label: 'X STOP', colour: 'amber', detail: 'X carriage is away from the limit switch' }
+  return { label: 'X STOP', colour: 'grey', detail: 'X endstop: unknown' }
+}
+
+// PAPER: green only when a sheet is detected, amber otherwise
+const paperLed = (v: IEmbosserStatus['paperSensor'], inverted: boolean): ILed => {
+  if (v === 'unknown') return { label: 'PAPER', colour: 'grey', detail: 'Paper sensor: unknown' }
+  const present = (v === 'triggered') !== inverted
+  return present
+    ? { label: 'PAPER', colour: 'green', detail: 'Paper detected' }
+    : { label: 'PAPER', colour: 'amber', detail: 'No paper detected' }
 }
 
 interface IStatusBar {
   status: IEmbosserStatus
+  paperSensorInverted?: boolean
   className?: string
 }
 
-const StatusBar = ({ status, className }: IStatusBar) => {
+const StatusBar = ({ status, paperSensorInverted, className }: IStatusBar) => {
   const live = status.link === 'ok' || status.link === 'busy'
   const leds: ILed[] = [
     linkLed(status),
     sdLed(status),
-    endstopLed('X STOP', live ? status.xEndstop : 'unknown', 'X endstop'),
-    endstopLed('PAPER', live ? status.paperSensor : 'unknown', 'Paper sensor (Y endstop)'),
+    xStopLed(live ? status.xEndstop : 'unknown'),
+    paperLed(live ? status.paperSensor : 'unknown', !!paperSensorInverted),
     { label: 'POWER', colour: 'grey', detail: 'Supply voltage is not measured on this board yet' },
   ]
   return (

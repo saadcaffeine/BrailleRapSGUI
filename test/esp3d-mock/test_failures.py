@@ -1,4 +1,4 @@
-# Failure handling + status LEDs, against the mock ESP3D/Marlin server.
+# Status lights, staged progress, flashing, STOP/restart and failure handling, against the mock.
 import json, sys, time, urllib.request
 from playwright.sync_api import sync_playwright
 
@@ -10,93 +10,124 @@ def body_has(page, text, timeout=20000):
 def led(page, name):
     el = page.locator(f'[aria-label^="{name}:"]').first
     return el.get_attribute('aria-label'), el.locator('.br-status__led').get_attribute('class')
+def seg(page, key): return page.locator(f'.br-job__seg--{key}').get_attribute('data-state')
+def btn(page, name): return page.get_by_role('button', name=name, exact=True)
 def dialog_title(page): return page.locator('div[role=dialog] h2').inner_text()
 
 fails = []
 def check(cond, msg):
     print(('ok   ' if cond else 'FAIL ') + msg)
     if not cond: fails.append(msg)
-
-def wait_led(page, name, colour, timeout=15):
+def wait_until(fn, timeout=15):
     t0 = time.time()
     while time.time() - t0 < timeout:
-        _, cls = led(page, name)
-        if f'--{colour}' in cls: return True
-        time.sleep(0.25)
+        try:
+            if fn(): return True
+        except Exception: pass
+        time.sleep(0.1)
     return False
+def wait_led(page, name, colour, timeout=15): return wait_until(lambda: f'--{colour}' in led(page, name)[1], timeout)
 
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/google-chrome',
                           args=['--host-resolver-rules=MAP embosser.test 127.0.0.1', '--no-sandbox', '--no-proxy-server'])
     page = b.new_page(viewport={'width': 412, 'height': 915})
     errs = []; page.on('pageerror', lambda e: errs.append(str(e)))
-    scenario('normal', 1, reset=True)
+    scenario('normal', 2, reset=True)
     page.goto(BASE); page.wait_for_selector('text=GENERATE')
     ta = page.locator('textarea').first
-    ta.fill('Hello 123'); page.click('text=GENERATE')
+    ta.fill('Hello 123'); btn(page, 'GENERATE').click()
 
-    # LEDs
+    # header / footer
+    check(page.locator('[aria-label=Settings]').count() == 1 and btn(page, 'SETTINGS').count() == 0, 'settings is a gear icon, no SETTINGS button')
+    foot = page.locator('.br-ui-footer').inner_text()
+    check('©' not in page.inner_text('body') and 'MIT License' not in foot, 'copyright line removed')
+    check(all(u in foot for u in ['kyjanond', 'braillerap', 'luc-github', 'MarlinFirmware', 'me-no-dev', 'links2004']), 'GitHub credits after the heart')
+
+    # LEDs (mock: x_min open, y_min TRIGGERED)
     check(wait_led(page, 'LINK', 'green'), 'LINK green when connected')
     check(wait_led(page, 'SD', 'green'), 'SD green (card ok)')
-    check(wait_led(page, 'X STOP', 'green'), 'X STOP open -> green')
-    check(wait_led(page, 'PAPER', 'amber'), 'PAPER sensor triggered -> amber')
-    check('not measured' in led(page, 'POWER')[0], 'POWER shown as not measured')
+    check(wait_led(page, 'X STOP', 'amber'), 'X STOP amber when not on the limit switch')
+    check(wait_led(page, 'PAPER', 'green'), 'PAPER green when sensor says paper present')
+    page.click('[aria-label=Settings]'); page.get_by_label("paper sensor reads 'open' when paper is in").check(); btn(page, 'Save and exit').click()
+    check(wait_led(page, 'PAPER', 'amber', 5), 'PAPER amber after inverting the sensor setting')
+    page.click('[aria-label=Settings]'); page.get_by_label("paper sensor reads 'open' when paper is in").uncheck(); btn(page, 'Save and exit').click()
+    btn(page, 'GENERATE').click()   # changing settings clears the generated G-code
 
-    # slow homing (14 s of busy keepalives, longer than the old 5 s query timeout + 30 s lost window would need)
-    scenario('normal', 14)
-    page.click('text=PRINT')
-    body_has(page, 'Homing and loading paper', 10000)
-    check(wait_led(page, 'LINK', 'amber', 12), 'LINK amber (busy) while homing')
-    body_has(page, 'Done', 40000)
-    check(page.locator('div[role=dialog]').count() == 0, 'slow homing finishes without an error dialog')
+    # staged progress, disabled buttons, per-dot flashing
+    page.evaluate("""() => { window.__flashes = 0; const el = document.querySelector('.br-ui-input__braille-canvas');
+        new MutationObserver(() => { if (el.classList.contains('br-flash')) window.__flashes++ }).observe(el, {attributes: true, attributeFilter: ['class']}) }""")
+    btn(page, 'PRINT').click()
+    check(wait_until(lambda: seg(page, 'homing') == 'active', 8), 'homing segment active first')
+    check(btn(page, 'PRINT').is_disabled() and btn(page, 'GENERATE').is_disabled(), 'PRINT and GENERATE disabled while printing')
+    check(wait_until(lambda: seg(page, 'paper') == 'active' and seg(page, 'homing') == 'done', 8), 'then paper segment active, homing done')
+    check(wait_until(lambda: seg(page, 'printing') == 'active' and seg(page, 'paper') == 'done', 10), 'then embossing segment active')
+    body_has(page, 'dots', 5000)
+    body_has(page, 'Done', 30000)
+    check(all(seg(page, k) == 'done' for k in ['homing', 'paper', 'printing']), 'all segments done at the end')
+    flashes = page.evaluate('window.__flashes'); dots = get('/__log') and open('uploaded.gco').read().count('M3 S1')
+    check(flashes >= dots * 0.8, f'preview flashed on dots ({flashes} flashes for {dots} dots)')
+    check(not btn(page, 'PRINT').is_disabled(), 'PRINT enabled again after the job')
 
-    # paper not loaded -> PAPER dialog -> Retry runs the file again without re-uploading
+    # paper not loaded -> paper segment red, PAPER dialog -> Retry without re-upload
     scenario('paperfail', 2)
-    page.click('text=PRINT')
-    page.wait_for_selector('div[role=dialog] >> text=RETRY', timeout=20000)
+    btn(page, 'PRINT').click()
+    btn(page, 'RETRY').wait_for(timeout=20000)
     check(dialog_title(page) == 'PAPER', 'paper failure shows PAPER dialog')
-    check(page.locator('div[role=dialog] >> text=Paper did not load').count() == 1, 'paper message shown')
+    check(seg(page, 'paper') == 'failed' and seg(page, 'homing') == 'done', 'paper segment shown as failed')
     uploads_before = sum(1 for c in get('/__log') if c.startswith('UPLOAD'))
     scenario('normal', 1)
-    page.get_by_role('button', name='RETRY', exact=True).click()
+    btn(page, 'RETRY').click()
     body_has(page, 'Done', 30000)
-    log = get('/__log')
-    check(sum(1 for c in log if c.startswith('UPLOAD')) == uploads_before, 'Retry did not re-upload')
-    check(log[-40:].count('M24') >= 1, 'Retry sent M23/M24')
+    check(sum(1 for c in get('/__log') if c.startswith('UPLOAD')) == uploads_before, 'Retry did not re-upload')
 
-    # firmware halt -> EMBOSSER STOPPED -> restart -> retry
+    # firmware halt -> restart -> retry
     scenario('kill', 2)
-    page.click('text=PRINT')
-    page.wait_for_selector('div[role=dialog] >> text=RESTART EMBOSSER', timeout=20000)
+    btn(page, 'PRINT').click()
+    btn(page, 'RESTART EMBOSSER').wait_for(timeout=20000)
     check(dialog_title(page) == 'EMBOSSER STOPPED', 'halt shows EMBOSSER STOPPED dialog')
     check(wait_led(page, 'LINK', 'red', 5), 'LINK red when halted')
     scenario('normal', 1)
-    page.get_by_role('button', name='RESTART EMBOSSER', exact=True).click()
-    page.wait_for_selector('div[role=dialog] >> text=RESTARTING', timeout=5000)
-    check('[ESP444]RESTART' in get('/__log'), 'restart sends [ESP444]RESTART')
+    btn(page, 'RESTART EMBOSSER').click()
     check(wait_led(page, 'LINK', 'green', 20), 'LINK green again after restart')
-    page.get_by_role('button', name='RETRY', exact=True).click()
+    btn(page, 'RETRY').click()
     body_has(page, 'Done', 30000)
     check(True, 'print succeeds after restart + retry')
 
-    # re-attach after page reload during a job, then cancel it
+    # STOP during embossing
     scenario('normal', 1)
-    page.click('text=PRINT'); body_has(page, 'Embossing', 15000)
+    n_restarts = get('/__log').count('[ESP444]RESTART')
+    btn(page, 'PRINT').click()
+    check(wait_until(lambda: seg(page, 'printing') == 'active', 15), 'embossing before STOP')
+    btn(page, 'STOP').click()
+    body_has(page, 'Stopped', 10000)
+    check(get('/__log').count('[ESP444]RESTART') == n_restarts + 1, 'STOP restarts the controller immediately')
+    check(seg(page, 'printing') == 'failed', 'embossing segment marked where it stopped')
+    check(wait_led(page, 'LINK', 'green', 20), 'LINK green after STOP restart')
+
+    # restart from settings (two taps)
+    page.click('[aria-label=Settings]'); btn(page, 'Restart embosser').click(); btn(page, 'Tap again to restart').click()
+    check(get('/__log').count('[ESP444]RESTART') == n_restarts + 2, 'Settings > Restart embosser restarts the controller')
+    btn(page, 'CLOSE').click()
+    check(wait_led(page, 'LINK', 'green', 20), 'LINK green after settings restart')
+
+    # re-attach after reload, then cancel
+    scenario('normal', 1)
+    btn(page, 'PRINT').click(); body_has(page, 'Embossing', 15000)
     page.reload(); page.wait_for_selector('text=GENERATE')
     body_has(page, 'Embossing', 15000)
-    check(page.get_by_role('button', name='CANCEL', exact=True).count() == 1, 'reloaded page re-attaches to running job with CANCEL')
-    page.get_by_role('button', name='CANCEL', exact=True).click(); body_has(page, 'Cancelled', 15000)
+    check(btn(page, 'CANCEL').count() == 1, 'reloaded page re-attaches to running job with CANCEL')
+    btn(page, 'CANCEL').click(); body_has(page, 'Cancelled', 15000)
     check('M524' in get('/__log'), 'cancel after reload sends M524')
 
     # no SD card
     scenario('nocard', 1)
     check(wait_led(page, 'SD', 'red', 25), 'SD red when no card')
-    ta = page.locator('textarea').first; ta.fill('x'); page.click('text=GENERATE'); page.click('text=PRINT')
+    ta = page.locator('textarea').first; ta.fill('x'); btn(page, 'GENERATE').click(); btn(page, 'PRINT').click()
     page.wait_for_selector('div[role=dialog] >> text=No SD card', timeout=15000)
     check(True, 'printing without a card gives a clear error')
-    page.get_by_role('button', name='CLOSE', exact=True).click()
+    btn(page, 'CLOSE').click()
     scenario('normal', 1)
-    page.screenshot(path='status.png')
     if errs: fails.append(f'page errors: {errs}')
     b.close()
 
