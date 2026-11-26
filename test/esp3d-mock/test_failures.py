@@ -84,6 +84,19 @@ with sync_playwright() as p:
     body_has(page, 'Done', 30000)
     check(sum(1 for c in get('/__log') if c.startswith('UPLOAD')) == uploads_before, 'Retry did not re-upload')
 
+    # paper edge not found while homing Y (firmware reports instead of kill()) -> PAPER dialog -> Retry
+    scenario('paperhomefail', 2)
+    btn(page, 'PRINT').click()
+    btn(page, 'RETRY').wait_for(timeout=20000)
+    check(dialog_title(page) == 'PAPER', 'paper homing failure shows PAPER dialog')
+    body_has(page, 'did not find the edge'); check(True, 'paper homing failure explains the sensor')
+    check(seg(page, 'paper') == 'failed', 'paper segment shown as failed')
+    check(wait_led(page, 'LINK', 'green', 5), 'LINK stays green (no halt)')
+    scenario('normal', 1)
+    btn(page, 'RETRY').click()
+    body_has(page, 'Done', 30000)
+    check(True, 'print succeeds after paper homing failure + retry')
+
     # firmware halt -> restart -> retry
     scenario('kill', 2)
     btn(page, 'PRINT').click()

@@ -204,6 +204,7 @@ export class Embosser {
     if (/SD init fail|No media|No SD card/i.test(line)) patch.sd = 'missing'
     if (/Done printing file/i.test(line)) { patch.sdPrinting = false; patch.progress = 100; this.lastDoneAt = now }
     if (/Paper not loaded/i.test(line)) { patch.lastError = 'Paper not loaded'; patch.sdPrinting = false }
+    else if (/Paper homing failed/i.test(line)) { patch.lastError = 'Paper homing failed'; patch.sdPrinting = false }
     else if (/Printer halted|kill\(\) called/i.test(line)) {
       patch.halted = true
       patch.haltReason = this.status.lastError || 'The firmware stopped (for example a homing failure).'
@@ -374,6 +375,13 @@ export class Embosser {
           finish(() => {
             onState({ phase: 'failed', progress: 0, failedAt: 'paper', message: 'paper did not load' })
             reject(new JobError('paper', 'Paper did not load. Put a sheet in the feeder (against the paper sensor), then press Retry.'))
+          })
+          return
+        }
+        if (s.lastError === 'Paper homing failed') {
+          finish(() => {
+            onState({ phase: 'failed', progress: 0, failedAt: 'paper', message: 'paper edge not found' })
+            reject(new JobError('paper', 'The paper sensor did not find the edge of the sheet. Check the sheet is straight and the sensor lever moves freely, then press Retry.'))
           })
           return
         }

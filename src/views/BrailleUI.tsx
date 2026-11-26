@@ -194,7 +194,7 @@ const BrailleUI = () => {
       ...prev,
       phase: 'failed',
       failedAt: prev.phase === 'failed' ? prev.failedAt : kind === 'paper' ? 'paper' : undefined,
-      message: kind === 'paper' ? 'paper did not load' : kind === 'halted' ? 'embosser stopped' : undefined,
+      message: prev.phase === 'failed' && prev.message ? prev.message : kind === 'paper' ? 'paper did not load' : kind === 'halted' ? 'embosser stopped' : undefined,
     }))
     const actions: IUiAlertProps['actions'] = []
     if (kind === 'paper' || kind === 'lost') actions.push({ label: 'RETRY', onClick: () => { closeAlert(); runWifiJob(undefined) } })

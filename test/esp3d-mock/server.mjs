@@ -1,5 +1,5 @@
 // Mock of ESP3DLib 1.x + MarlinBraille2 (xl-sg) for testing the SD-card print flow.
-// Scenario (GET /__scenario?mode=...): normal | paperfail | kill | nocard ; &home=<seconds of homing>
+// Scenario (GET /__scenario?mode=...): normal | paperfail | paperhomefail | kill | nocard ; &home=<seconds of homing>
 import http from 'http'
 import fs from 'fs'
 import { WebSocketServer } from 'ws'
@@ -35,6 +35,9 @@ const runFile = () => {
     if (l.startsWith('G28')) {
       if (l.startsWith('G28 Y') && scenario.mode === 'paperfail') {
         return block(scenario.home / 2, () => { reply('Error:Paper not loaded'); printing = null; flushQueue() })
+      }
+      if (l.startsWith('G28 Y') && scenario.mode === 'paperhomefail') {
+        return block(scenario.home / 2, () => { reply('Error:Paper homing failed'); printing = null; flushQueue() })
       }
       if (scenario.mode === 'kill' && (l.startsWith('G28 Y') || !text.includes('G28 Y'))) {
         return block(scenario.home / 2, () => { reply('Error:Printer halted. kill() called!'); printing = null; halted = true; queued = [] })
