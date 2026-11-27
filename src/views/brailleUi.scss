@@ -109,6 +109,10 @@
     height: 100%;
     object-fit: contain;
   }
+  > .br-ui-header__settings {
+    margin-left: auto;
+    color: v.$color-main;
+  }
   > .MuiTypography-root {
     color: v.$color-main;
   }
@@ -116,7 +120,7 @@
 
 .br-ui-footer {
   @include xs {
-    height: 48px;
+    height: auto;
     > .br-ui-footer__logo-wrapper {
       > .br-ui-footer__logo {
         height: 32px;
@@ -130,7 +134,7 @@
     }
   }
   @include md {
-    height: 80px;
+    height: auto;
     > .br-ui-footer__logo-wrapper {
       > .br-ui-footer__logo {
         height: 64px;
@@ -143,8 +147,8 @@
       }
     }
   }
-  padding: 24px;
-  margin-bottom: 16px;
+  padding: 8px 24px 16px;
+  margin-bottom: 8px;
   > .br-ui-footer__logo-wrapper {
     margin-bottom: 8px;
     max-width: 100%;
@@ -158,6 +162,8 @@
   > .br-ui-footer__text-wrapper {
     > .MuiTypography-root {
       color: v.$color-main;
+      line-height: 1.6;
+      a { color: inherit; }
     }
   }
 }
@@ -167,7 +173,9 @@
   &__btns {
     display: flex;
     flex-direction: row;
-    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
     margin-bottom: 8px;
   }
   &__print-state {
@@ -176,4 +184,17 @@
       font-size: small;
     }
   }
+}
+
+// While embossing: a slow looped glow on the preview. Dot events arrive from ESP3D in
+// ~500 ms bursts, so a per-dot flash can't be in real time; a steady loop reads better.
+.br-ui-input__braille-canvas.br-embossing {
+  animation: br-embossing-glow 1.6s ease-in-out infinite;
+}
+@keyframes br-embossing-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(242, 165, 22, 0.35); }
+  50% { box-shadow: 0 0 0 3px rgba(242, 165, 22, 0.75), 0 0 14px rgba(242, 165, 22, 0.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .br-ui-input__braille-canvas.br-embossing { animation: none; box-shadow: 0 0 0 2px #f2a516; }
 }

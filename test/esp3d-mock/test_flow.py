@@ -50,7 +50,7 @@ with sync_playwright() as p:
     page.goto(BASE); page.wait_for_selector('text=GENERATE')
 
     # 1. defaults when served from the embosser
-    page.click('text=SETTINGS')
+    page.click('[aria-label=Settings]')
     page.wait_for_selector('text=Embosser connection')
     body = page.inner_text('div[role=dialog]')
     for want in ['English UEB grade 1', 'A3 (BrailleRAP XL)', 'standard', 'WiFi (SD card on the embosser)']:
@@ -61,7 +61,7 @@ with sync_playwright() as p:
     # 2. translation cases
     for text, exp in CASES:
         ta.fill(text); page.click('text=GENERATE')
-        page.click('text=PRINT'); page.wait_for_function("document.body.innerText.includes('state: done')", timeout=20000)
+        page.click('text=PRINT'); page.wait_for_function("document.body.innerText.includes('Done')", timeout=20000)
         g = open('uploaded.gco').read()
         dots, lines = decode(g)
         got = lines.get(0, {}); want = expect_cells(exp)
@@ -71,7 +71,8 @@ with sync_playwright() as p:
 
     # 3. G-code sanity for the last job
     xs = [d[0] for d in dots]; ys = [d[1] for d in dots]
-    if not g.startswith('G28 X;'): failures.append('gcode does not start with G28 X')
+    if not g.startswith('M118 BR:HOMING\nG28 X;'): failures.append('gcode does not start with homing marker + G28 X')
+    if g.count('M118 BR:DOT') != len(dots): failures.append('one DOT marker per dot expected')
     if max(xs) > 297 - MARGIN or max(ys) > 420 - MARGIN: failures.append('dot outside A3 printable area')
     if 'G1 X0.00 Y420.00;' not in g: failures.append('no eject move to Y420 with X0')
     if g.count('M3 S1') != len(dots): failures.append('dot count mismatch')
@@ -91,8 +92,8 @@ with sync_playwright() as p:
 
     # 6. cancel mid-print
     ta.fill('Cancel test 123'); page.click('text=GENERATE'); page.click('text=PRINT')
-    page.wait_for_selector('text=CANCEL', timeout=10000); page.click('text=CANCEL')
-    page.wait_for_function("document.body.innerText.includes('state: cancelled')", timeout=15000)
+    page.get_by_role('button', name='CANCEL', exact=True).wait_for(timeout=10000); page.get_by_role('button', name='CANCEL', exact=True).click()
+    page.wait_for_function("document.body.innerText.includes('Cancelled')", timeout=15000)
     if 'M524' not in server_log(): failures.append('M524 not sent on cancel')
     print('cancel: ok')
     page.screenshot(path='phone.png', full_page=True)

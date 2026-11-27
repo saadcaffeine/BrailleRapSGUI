@@ -10,6 +10,7 @@ export interface IUiAlertProps {
   message?: string,
   show: boolean,
   handleClose?: ()=>void
+  actions?: { label: string, onClick: ()=>void }[]
 }
 
 const UiAlert = (props:IUiAlertProps)=>{
@@ -30,7 +31,12 @@ const UiAlert = (props:IUiAlertProps)=>{
         </DialogContentText>
       </DialogContent>
       <DialogActions>
-        <Button onClick={props.handleClose} autoFocus>
+        {(props.actions || []).map((a)=>(
+          <Button key={a.label} variant='contained' onClick={a.onClick}>
+            {a.label}
+          </Button>
+        ))}
+        <Button onClick={props.handleClose} autoFocus={!props.actions?.length}>
           CLOSE
         </Button>
       </DialogActions>

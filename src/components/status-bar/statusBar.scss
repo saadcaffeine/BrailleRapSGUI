@@ -1,0 +1,46 @@
+.br-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 0 16px;
+  align-items: center;
+  font-family: Roboto, sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: default;
+  }
+
+  &__label {
+    color: #445;
+    font-weight: 500;
+  }
+
+  &__led {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.25);
+
+    &--green { background: #2fbf4a; box-shadow: 0 0 6px #2fbf4a, inset 0 -1px 2px rgba(0, 0, 0, 0.25); }
+    &--amber { background: #f2a516; box-shadow: 0 0 6px #f2a516, inset 0 -1px 2px rgba(0, 0, 0, 0.25); }
+    &--red   { background: #e0352b; box-shadow: 0 0 6px #e0352b, inset 0 -1px 2px rgba(0, 0, 0, 0.25); }
+    &--blue  { background: #2f7de0; box-shadow: 0 0 6px #2f7de0, inset 0 -1px 2px rgba(0, 0, 0, 0.25); }
+    &--grey  { background: #c9ccd1; }
+
+    &--blink { animation: br-status-blink 1s steps(2, start) infinite; }
+  }
+}
+
+@keyframes br-status-blink {
+  to { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .br-status__led--blink { animation: none; }
+}
