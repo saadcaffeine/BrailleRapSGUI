@@ -87,11 +87,16 @@ const gcodeMotorOff = function()
   return 'M84;\r\n'
 }
 
+// Progress markers: M118 echoes text back to the host. M3 waits for the previous move to
+// finish, so a marker right after M3 S1 arrives when the dot is embossed. The web UI uses
+// these for the staged progress bar and to flash the preview on every dot.
+export const MARK = 'M118 BR:'
+
 const gcodeHome = function ()
 {
-  let str = 'G28 X;\r\n'
+  let str = MARK + 'HOMING\r\nG28 X;\r\n'
   if (brailleConfig.homeY){
-    str += 'G28 Y;\r\n'
+    str += MARK + 'PAPER\r\nG28 Y;\r\n'
   }
   
 
@@ -144,8 +149,12 @@ const gcodeMoveToCached = function (X?:number,Y?:number,Z?:number)
 }
 
 
+let dotTotal = 0
+let dotIndex = 0
 const gcodeprintdot = function () {
   let s = brailleConfig.GCODEdown + ';\r\n'
+  dotIndex += 1
+  s += `${MARK}DOT ${dotIndex}/${dotTotal}\r\n`
   s += brailleConfig.GCODEup + ';\r\n'
   s += brailleConfig.GCODEafterpause + ';\r\n'
 
@@ -199,8 +208,9 @@ const buildoptimizedgcode = function ()
   })
 
   const sortedpositions = gcodesortzigzag(GCODEdotposition)
-
-  console.log(`sorted positions: ${sortedpositions.length}`)
+  dotTotal = sortedpositions.length + GCODEsvgdotposition.length
+  dotIndex = 0
+  codestr += `${MARK}PRINT 0/${dotTotal}\r\n`
 
   if (brailleConfig.usedotgrid == true)
     console.log ('filtering dot neighbor')
@@ -243,6 +253,7 @@ const buildoptimizedgcode = function ()
     }
   }
 
+  codestr += MARK + 'EJECT\r\n'
   if (brailleConfig.ejectPaper){
     codestr += gcodeMoveTo (0,brailleConfig.paperHeight)
   } else {
@@ -250,6 +261,7 @@ const buildoptimizedgcode = function ()
   }
   
   codestr += gcodeMotorOff ()
+  codestr += MARK + 'END\r\n'
   return (codestr)
 }
 

@@ -1,0 +1,20 @@
+.br-estop {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 50%;
+  width: 64px;
+  height: 64px;
+  cursor: pointer;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+  transition: transform 0.08s ease-out, filter 0.08s ease-out;
+
+  &:hover:not(:disabled) { filter: drop-shadow(0 3px 6px rgba(214, 34, 24, 0.55)); }
+  &:active:not(:disabled) { transform: scale(0.94); }
+  &:focus-visible { outline: 3px solid #2f7de0; outline-offset: 3px; }
+  &:disabled {
+    cursor: not-allowed;
+    filter: grayscale(1) opacity(0.45);
+  }
+}

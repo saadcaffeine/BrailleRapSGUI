@@ -10,6 +10,20 @@ Fork of [kyjanond/BrailleRapUI](https://github.com/kyjanond/BrailleRapUI) (Brail
 - **English UEB Grade 1** table: capital and capitalised-word indicators, numeric indicator, grade 1 indicator after numbers, and UEB punctuation. The original `english` table was actually **French** Braille, so it is now labelled *French (original BrailleRap)*.
 - **Paper presets:** A3 (BrailleRAP XL, default), A4 on XL, and A4 (original BrailleRAP).
 - **Braille size:** *standard* (2.5 mm dot / 6 mm cell / 10 mm line) by default, or the original larger Bhutan spacing.
+- **Status lights** in WiFi mode:
+  - LINK: green connected, amber busy/connecting, red lost or halted
+  - SD: green ready, blue printing, red no card
+  - X STOP: amber by default, green when the carriage is on the limit switch
+  - PAPER: amber by default, green only when a sheet is detected. By default `y_min: open` means paper is present, matching MarlinBraille2 xl-sg where TRIGGERED means no paper at the lever. Flip it in Settings if your wiring differs.
+  - POWER: grey, not measured on this board yet
+- **Staged progress bar:** Homing (purple), then Paper (teal), then Embossing (green, filling dot by dot). The stage where a job failed or stopped turns red. The progress comes from `M118 BR:` markers in the G-code (`HOMING`, `PAPER`, `PRINT`, `DOT n/N`, `EJECT`, `END`). Each marker comes straight after an `M3 S1`, which waits for the move before it to finish, so it arrives as the dot is embossed.
+- **Live preview:** while embossing, the preview glows in a slow loop and a small solenoid icon taps next to the dot count. Embossed dots turn black, the latest is orange, and the rest are grey. ESP3D sends Marlin's output to the browser in bursts every 500 ms (`FLUSHTIMEOUT` in ESP3DLib), so the dot count and preview update in steps. A flash per dot can't be in time with the solenoid, which is why the page uses a steady animation.
+- **Buttons:** GENERATE and PRINT are disabled while a job runs. **CANCEL** stops cleanly after the current move (`M524`). The **emergency-stop icon** (red on yellow) stops everything at once by restarting the controller (`[ESP444]RESTART`). Marlin's emergency parser isn't connected to the serial input on ESP32, so `M112` would only wait in the queue. Settings (gear icon) also has **Restart embosser**.
+- **Failed prints are handled:**
+  - Paper doesn't load: **Retry** re-runs the file already on the SD card.
+  - Firmware halt: **Restart embosser**, then Retry.
+  - Long homing or paper loading: not mistaken for lost contact, because Marlin's `busy: processing` messages count as signs of life.
+  - Page reloaded mid-job: the page picks the job up again.
 - Warns when text overflows the sheet or contains characters the table can't translate.
 - Settings are remembered in the browser. The default baud rate is 250000 (MarlinBraille2).
 - Single-file build for the ESP32: `esp/braille.html.gz`, about 260 KB.
@@ -115,12 +129,14 @@ yarn build:esp    # -> dist-esp/braille.html(.gz) for the ESP32
 
 ### Test against a mock embosser
 
-`test/esp3d-mock/` has a mock ESP3D + Marlin server (upload, `M23`/`M24`/`M27`/`M524`, websocket) and a Playwright test. The test types text on a phone-sized screen, prints, decodes the uploaded G-code back into Braille cells and checks them against UEB, then checks cancel.
+`test/esp3d-mock/` has a mock ESP3D + Marlin server: upload, `M23`/`M24`/`M27`/`M119`/`M524`, the websocket, busy keepalives while homing, and the scenarios `paperfail`, `kill` and `nocard`. It comes with two Playwright tests:
+- `test_flow.py` checks UEB translation by decoding the uploaded G-code, the command order, the A3 bounds, the overflow warning and cancel.
+- `test_failures.py` checks the status lights and the paper-sensor setting, the staged progress, the disabled buttons, the preview flashing once per dot, paper failure + Retry (no re-upload), halt + Restart + Retry, STOP, Restart from Settings, re-attaching after a reload, the missing-card error, and the credits footer.
 
 ```
 cd test/esp3d-mock && npm install
 node server.mjs ../../dist-esp/braille.html.gz &
-python3 test_flow.py
+python3 test_flow.py && python3 test_failures.py
 ```
 
 ## Limitations
