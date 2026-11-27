@@ -29,6 +29,8 @@ const UiFooter = (props:IUiFooter)=>{
         <Typography variant='body2'>
           Based on BrailleRap Bhutan UI by Ondrej Kyjanek and the Assistive Learning Units team,
           CST Fablab, Phuentsholing ♡{' '}
+          <a href='https://saadcaffeine.github.io/BrailleRap-SG/' target='_blank' rel='noopener noreferrer'>BrailleRAP Singapore</a>
+          {' · '}
           {credits.map((c, i) => (
             <span key={c.user}>
               <a href={`https://github.com/${c.user}`} title={c.what} target='_blank' rel='noopener noreferrer'>{c.user}</a>
